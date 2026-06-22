@@ -347,27 +347,50 @@ dz.addEventListener('dragleave', ()=>dz.classList.remove('drag'));
 dz.addEventListener('drop', e=>{e.preventDefault();dz.classList.remove('drag');doFile(e.dataTransfer.files[0])});
 document.getElementById('fi').addEventListener('change', e=>doFile(e.target.files[0]));
 
+async function extractPDFText(file) {
+  if (!window.pdfjsLib) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  const ab = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({data: ab}).promise;
+  let text = '';
+  const maxPages = Math.min(pdf.numPages, 8);
+  for (let i = 1; i <= maxPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(' ') + '\n';
+  }
+  return text;
+}
+
 function doFile(f) {
   if (!f || !f.name.endsWith('.pdf')) { alert('Por favor seleccione um ficheiro PDF.'); return; }
   if (!getWorkerUrl()) { alert('Configure primeiro a URL do Cloudflare Worker no topo da página.'); return; }
   document.getElementById('progWrap').style.display='block';
   lg('A ler: ' + f.name); prog(10);
-  const r = new FileReader();
-  r.onload = async e => {
-    const b64 = e.target.result.split(',')[1];
-    lg('PDF carregado (' + Math.round(f.size/1024) + ' KB). A enviar para análise IA…'); prog(25);
-    try { await runAI(b64); }
-    catch(err) { lg('ERRO: ' + err.message); setStatus('Erro: ' + err.message); }
-  };
-  r.readAsDataURL(f);
+  (async () => {
+    try {
+      lg('A extrair texto do PDF (primeiras 8 paginas)...'); prog(20);
+      const text = await extractPDFText(f);
+      lg('Texto extraido (' + text.length + ' caracteres). A enviar para analise IA...'); prog(35);
+      await runAI(text);
+    } catch(err) { lg('ERRO: ' + err.message); setStatus('Erro: ' + err.message); }
+  })();
 }
 function lg(m){const el=document.getElementById('progLog');el.textContent+=m+'\n';el.scrollTop=el.scrollHeight}
 function prog(p){document.getElementById('progFill').style.width=p+'%';document.getElementById('progLabel').textContent=p<100?'A analisar PDF…':'Análise concluída!'}
 function setStatus(m){document.getElementById('statusTxt').textContent=m}
 
 // ── AI ANALYSIS ───────────────────────────────────────────────
-async function runAI(b64) {
-  lg('A contactar API via Worker…'); prog(40);
+async function runAI(pdfText) {
+  lg('A contactar API via Worker...'); prog(40);
   const prompt = `You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment PDF and extract ALL changes from sections 1 (AIRAC) and 2 (NON-AIRAC).
 
 CRITICAL RULES FOR OUTPUT:
@@ -387,10 +410,7 @@ ad field: ICAO 4-letter code (e.g. LPPT) or ENR for en-route changes.`;
 
   const data = await callAPI({
     model:'claude-sonnet-4-6', max_tokens:4000,
-    messages:[{role:'user', content:[
-      {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}},
-      {type:'text', text:prompt}
-    ]}]
+    messages:[{role:'user', content: prompt + '\n\nDOCUMENT TEXT:\n' + pdfText}]
   });
 
   lg('Resposta recebida. A processar…'); prog(70);
