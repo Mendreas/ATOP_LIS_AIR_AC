@@ -251,7 +251,7 @@ const EAIP='https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_On
 let changes=[],analyses={},meta={},curId=null,eaipCache={};
 
 // ── CONFIG ──
-function getUrl(){return localStorage.getItem('airac_wurl')||'';}
+function getUrl(){return localStorage.getItem('airac_wurl')||'https://curly-sound-5d5e.mendreas.workers.dev';}
 function saveUrl(){localStorage.setItem('airac_wurl',document.getElementById('workerUrl').value.trim());}
 async function testWorker(){
   const url=document.getElementById('workerUrl').value.trim();
@@ -267,7 +267,7 @@ async function testWorker(){
     setStatus('Worker configurado. Pode carregar o AIRAC.');
   }catch(e){st.textContent=' Erro: '+e.message;}
 }
-window.addEventListener('DOMContentLoaded',()=>{const s=getUrl();if(s)document.getElementById('workerUrl').value=s;});
+window.addEventListener('DOMContentLoaded',()=>{const s=getUrl();document.getElementById('workerUrl').value=s;});
 
 // ── API ──
 async function callAPI(body){
@@ -485,9 +485,14 @@ async function loadEaip(id,url){
   const a=analyses[id];
   try{
     if(eaipCache[url]){a.eaipText=eaipCache[url];rawEl.textContent=a.eaipText.substring(0,3000);rawEl.classList.remove('dim');return;}
-    const resp=await fetch(url);
-    if(!resp.ok)throw new Error('HTTP '+resp.status);
-    const txt=await pdfToText({data:await resp.arrayBuffer()},20);
+    rawEl.textContent='A carregar via Worker...';
+    const workerResp=await fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_fetchUrl:url})});
+    const workerData=await workerResp.json();
+    if(workerData.error)throw new Error(workerData.error.message);
+    const binary=atob(workerData.base64);
+    const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    const txt=await pdfToText({data:bytes.buffer},20);
     eaipCache[url]=txt;a.eaipText=txt;
     rawEl.textContent=txt.substring(0,3000)+(txt.length>3000?'\n\n[truncado - '+txt.length+' chars total]':'');
     rawEl.classList.remove('dim');
