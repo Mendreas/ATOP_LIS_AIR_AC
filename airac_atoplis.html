@@ -370,13 +370,20 @@ async function runAI(b64) {
   lg('A contactar API via Worker…'); prog(40);
   const prompt = `You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment PDF and extract ALL changes from sections 1 (AIRAC) and 2 (NON-AIRAC).
 
-Return ONLY this format — no markdown, no extra text:
-METADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment: AIRAC XXX-YY"}
-[{"id":"1","ad":"LPPT","section":"2.22","description":"full description","impact":"HIGH","categories":["SID"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},...]
+CRITICAL RULES FOR OUTPUT:
+- Use ONLY straight double quotes " never curly quotes
+- Use ONLY ASCII characters in JSON keys and values
+- No apostrophes or special dashes inside JSON strings — replace with plain hyphen or space
+- No trailing commas
+- Escape any double quote inside a string value with backslash
 
-impact: HIGH=new/changed SID/STAR/IAP/HLDG/WPT/airspace. MEDIUM=corrections to existing procedures or operational data. LOW=admin/chart-only/obstacles/emails.
-categories from: SID STAR IAP HLDG WPT PROC AIR NAV FREQ MSA GEN
-ad: ICAO code or "ENR" for en-route.`;
+Return ONLY this exact format, nothing else, no markdown:
+METADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}
+[{"id":"1","ad":"LPPT","section":"2.22","description":"full description using only ASCII","impact":"HIGH","categories":["SID"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]
+
+impact values: HIGH=new or changed SID/STAR/IAP/HLDG/WPT/airspace classification. MEDIUM=corrections to existing procedures or operational data. LOW=admin/chart-only/obstacles/contact changes.
+categories array values only from: SID STAR IAP HLDG WPT PROC AIR NAV FREQ MSA GEN
+ad field: ICAO 4-letter code (e.g. LPPT) or ENR for en-route changes.`;
 
   const data = await callAPI({
     model:'claude-sonnet-4-6', max_tokens:4000,
@@ -389,15 +396,50 @@ ad: ICAO code or "ENR" for en-route.`;
   lg('Resposta recebida. A processar…'); prog(70);
   const raw = data.content.map(c=>c.text||'').join('');
 
+  // Parse METADATA
   const mm = raw.match(/METADATA:(\{[^\n]+\})/);
-  meta = mm ? JSON.parse(mm[1]) : {number:'N/A',effectiveDate:'N/A',title:'AIP Amendment'};
+  try { meta = mm ? JSON.parse(mm[1]) : {number:'N/A',effectiveDate:'N/A',title:'AIP Amendment'}; }
+  catch(e) { meta = {number:'N/A',effectiveDate:'N/A',title:'AIP Amendment'}; }
 
+  // Find the JSON array — try multiple strategies
+  let parsed = null;
+
+  // Strategy 1: find outermost [ ... ]
   const jm = raw.match(/\[[\s\S]*\]/);
-  if (!jm) throw new Error('Não foi possível extrair alterações. Verifique se é um AIRAC da NAV Portugal.');
+  if (jm) {
+    try { parsed = JSON.parse(jm[0]); } catch(e) {
+      lg('Aviso: JSON com caracteres especiais. A limpar e tentar de novo…');
+      // Strategy 2: sanitise — replace curly quotes, strip control chars
+      const clean = jm[0]
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+        .replace(/,\s*([}\]])/g, '$1');  // trailing commas
+      try { parsed = JSON.parse(clean); } catch(e2) {
+        // Strategy 3: extract individual objects
+        lg('A tentar extracção individual de objectos…');
+        const objs = [];
+        const objRx = /\{[^{}]*"ad"\s*:\s*"[^"]*"[^{}]*\}/g;
+        let m;
+        while ((m = objRx.exec(raw)) !== null) {
+          try { objs.push(JSON.parse(m[0])); } catch(e3) {}
+        }
+        if (objs.length) parsed = objs;
+      }
+    }
+  }
 
-  changes = JSON.parse(jm[0]);
+  if (!parsed || !parsed.length) throw new Error('Não foi possível extrair alterações. Verifique se é um AIRAC da NAV Portugal.');
+
+  changes = parsed;
   changes.forEach((c,i) => {
     c.id = String(i+1);
+    if (!c.categories) c.categories = [];
+    if (!c.impact) c.impact = 'MEDIUM';
+    if (!c.ad) c.ad = 'N/A';
+    if (!c.section) c.section = '';
+    if (!c.description) c.description = '(sem descrição)';
     analyses[c.id] = {organs: AD_ORG[c.ad]||[], systems: guessSys(c), desc:'', selected:true};
   });
 
