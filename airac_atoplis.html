@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIRAC Impact Tool — NAV Portugal</title>
+<style>
+:root {
+  --bg:#0d1117; --s1:#161b22; --s2:#21262d; --s3:#2d333b;
+  --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+  --accent:#388bfd; --accentH:#58a6ff;
+  --high:#f85149; --med:#e3b341; --low:#3fb950; --green:#238636;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.5;min-height:100vh}
+
+/* CONFIG BANNER */
+#cfgBanner{background:#1a0a00;border-bottom:1px solid #f0c000;padding:10px 20px;font-size:12px;color:#f0c000;display:flex;align-items:center;gap:12px}
+#cfgBanner input{background:#0d0800;border:1px solid #f0c000;border-radius:5px;padding:4px 10px;color:#f0c000;font-size:12px;width:380px;font-family:monospace}
+#cfgBanner button{padding:4px 12px;border-radius:5px;border:1px solid #f0c000;background:transparent;color:#f0c000;cursor:pointer;font-size:12px}
+#cfgBanner button:hover{background:#f0c000;color:#000}
+#cfgBanner.ok{background:#0d2200;border-color:var(--low);color:var(--low)}
+
+header{background:var(--s1);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:12px}
+.logo{width:30px;height:30px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0}
+header h1{font-size:15px;font-weight:600}
+header p{font-size:11px;color:var(--muted)}
+.hbadge{margin-left:auto;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;color:var(--muted);white-space:nowrap}
+
+.steps{display:flex;background:var(--s1);border-bottom:1px solid var(--border)}
+.step{flex:1;padding:9px 10px;text-align:center;font-size:11px;color:var(--muted);border-right:1px solid var(--border);transition:all .2s}
+.step:last-child{border-right:none}
+.step.active{color:var(--accentH);background:var(--s2);font-weight:600}
+.step.done{color:var(--low)}
+
+.panel{display:none;padding:20px}
+.panel.active{display:block}
+
+.upload-zone{border:2px dashed var(--border);border-radius:12px;padding:50px 30px;text-align:center;cursor:pointer;transition:all .2s;background:var(--s1)}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:rgba(56,139,253,.06)}
+.upload-zone h2{font-size:17px;margin:12px 0 6px;font-weight:600}
+.upload-zone p{color:var(--muted);font-size:12px}
+
+.prog-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin:8px 0}
+.prog-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .4s}
+.prog-log{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11px;color:var(--muted);font-family:monospace;max-height:110px;overflow-y:auto;white-space:pre-wrap;margin-top:6px}
+
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.toolbar input,.toolbar select{background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--text);font-size:12px}
+.toolbar input:focus,.toolbar select:focus{outline:none;border-color:var(--accent)}
+
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;padding:8px 10px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--s1);font-weight:500}
+.tbl td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.tbl tr:hover td{background:rgba(56,139,253,.03)}
+.tbl tr:last-child td{border-bottom:none}
+
+.imp{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.3px}
+.imp-HIGH{background:rgba(248,81,73,.15);color:var(--high);border:1px solid rgba(248,81,73,.3)}
+.imp-MEDIUM{background:rgba(227,179,65,.15);color:var(--med);border:1px solid rgba(227,179,65,.3)}
+.imp-LOW{background:rgba(63,185,80,.12);color:var(--low);border:1px solid rgba(63,185,80,.25)}
+
+.tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:500;margin:1px;background:var(--s2);color:var(--muted);border:1px solid var(--border)}
+
+/* MODAL */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
+.modal-bg.open{display:flex}
+.modal{background:var(--s1);border:1px solid var(--border);border-radius:12px;width:100%;max-width:660px;margin:auto}
+.modal-hdr{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px}
+.modal-hdr h3{font-size:14px;font-weight:600;flex:1;line-height:1.4}
+.modal-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0}
+.modal-body{padding:18px;max-height:65vh;overflow-y:auto}
+.modal-foot{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+
+.slbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:14px 0 7px}
+.slbl:first-child{margin-top:0}
+.descbox{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;line-height:1.6}
+
+.organ-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:6px}
+.organ-card{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;transition:all .15s}
+.organ-card:hover{border-color:var(--muted)}
+.organ-card.sel{border-color:var(--accent);background:rgba(56,139,253,.1)}
+.organ-card .on{font-weight:600;font-size:12px}
+.organ-card .oc{font-size:10px;color:var(--muted)}
+
+.sys-wrap{display:flex;flex-wrap:wrap;gap:5px}
+.sys-chip{padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--s2);font-size:11px;cursor:pointer;transition:all .15s;color:var(--muted)}
+.sys-chip:hover{border-color:var(--muted);color:var(--text)}
+.sys-chip.sel{border-color:var(--accent);background:rgba(56,139,253,.12);color:var(--accentH)}
+
+textarea.aibox{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;line-height:1.6;min-height:70px}
+textarea.aibox:focus{outline:none;border-color:var(--accent)}
+
+/* EXPORT */
+.exp-section{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px}
+.exp-section h3{font-size:14px;font-weight:600;margin-bottom:3px}
+.exp-section > p{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+.ecard{background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
+.ecard-hdr{padding:10px 14px;display:flex;align-items:center;gap:8px;cursor:pointer}
+.ecard-hdr:hover{background:var(--s3)}
+.ecard-body{padding:14px;display:none}
+.ecard-body.open{display:block}
+.ef{margin-bottom:10px}
+.ef label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}
+.ef input,.ef textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 9px;color:var(--text);font-size:12px;font-family:inherit}
+.ef textarea{min-height:120px;resize:vertical;line-height:1.5}
+.ef input:focus,.ef textarea:focus{outline:none;border-color:var(--accent)}
+
+textarea.pdftxt{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);font-size:11px;font-family:'Courier New',monospace;min-height:260px;resize:vertical;line-height:1.65}
+textarea.pdftxt:focus{outline:none;border-color:var(--accent)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accentH)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-secondary{background:var(--s2);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--muted)}
+.btn-success{background:var(--green);color:#fff}
+.btn-danger{background:rgba(248,81,73,.15);color:var(--high);border:1px solid rgba(248,81,73,.3)}
+.btn-sm{padding:3px 9px;font-size:11px;border-radius:5px}
+
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:4px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.info-strip{background:rgba(56,139,253,.08);border:1px solid rgba(56,139,253,.2);border-radius:8px;padding:9px 13px;font-size:12px;color:var(--accentH);margin-bottom:14px}
+.empty{text-align:center;padding:40px;color:var(--muted);font-size:12px}
+
+.status{background:var(--s1);border-top:1px solid var(--border);padding:6px 20px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
+
+.chk{accent-color:var(--accent);cursor:pointer;width:14px;height:14px}
+
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+</head>
+<body>
+
+<!-- CONFIG BANNER -->
+<div id="cfgBanner">
+  <span>⚠ Cole a URL do Cloudflare Worker:</span>
+  <input type="text" id="workerUrl" placeholder="https://airac-proxy.XXXXX.workers.dev" oninput="saveWorkerUrl()">
+  <button onclick="testWorker()">Testar ligação</button>
+  <span id="cfgStatus"></span>
+</div>
+
+<header>
+  <div class="logo">✈</div>
+  <div>
+    <h1>AIRAC Impact Tool — NAV Portugal / GOPLIS</h1>
+    <p>Análise de impacto ATC · notificação ao ATOPLIS</p>
+  </div>
+  <div class="hbadge" id="amdtBadge">Nenhum AIRAC carregado</div>
+  <button id="btnReset" class="btn btn-danger btn-sm" style="display:none;margin-left:8px" onclick="resetAll()">Limpar</button>
+</header>
+
+<div class="steps">
+  <div class="step active" id="step1">1 · Upload AIRAC</div>
+  <div class="step" id="step2">2 · Alterações</div>
+  <div class="step" id="step3">3 · Impacto</div>
+  <div class="step" id="step4">4 · Exportação</div>
+</div>
+
+<!-- PANEL 1 -->
+<div class="panel active" id="panel1">
+  <div class="upload-zone" id="dropZone" onclick="document.getElementById('fi').click()">
+    <div style="font-size:44px">📄</div>
+    <h2>Carregar PDF do AIRAC</h2>
+    <p>Clique ou arraste o ficheiro PDF do AIP Amendment</p>
+    <p style="margin-top:6px;font-size:11px">Formato esperado: LP_Amdt_A_YYYY_NNN_en.pdf</p>
+    <br>
+    <button class="btn btn-secondary" onclick="event.stopPropagation();document.getElementById('fi').click()">Seleccionar ficheiro</button>
+  </div>
+  <input type="file" id="fi" accept=".pdf" style="display:none">
+  <div id="progWrap" style="display:none;margin-top:16px">
+    <p style="font-size:12px;margin-bottom:4px" id="progLabel">A analisar PDF…</p>
+    <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+    <div class="prog-log" id="progLog"></div>
+  </div>
+</div>
+
+<!-- PANEL 2 -->
+<div class="panel" id="panel2">
+  <div class="info-strip" id="p2info"></div>
+  <div class="toolbar">
+    <input type="text" placeholder="Pesquisar…" id="srch" style="width:160px" oninput="filterTable()">
+    <select id="filtImp" onchange="filterTable()">
+      <option value="">Todos os impactos</option>
+      <option value="HIGH">Alto</option>
+      <option value="MEDIUM">Médio</option>
+      <option value="LOW">Baixo</option>
+    </select>
+    <select id="filtAd" onchange="filterTable()"><option value="">Todos os AD</option></select>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn btn-secondary btn-sm" onclick="selAll(true)">Sel. todos</button>
+      <button class="btn btn-secondary btn-sm" onclick="selAll(false)">Limpar sel.</button>
+      <button class="btn btn-primary btn-sm" id="btnProceed" onclick="goImpact()" disabled>Analisar impacto →</button>
+    </div>
+  </div>
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:32px"><input type="checkbox" class="chk" id="masterChk" onchange="toggleAll(this.checked)"></th>
+          <th style="width:65px">AD</th>
+          <th style="width:90px">Secção</th>
+          <th>Descrição</th>
+          <th style="width:140px">Categorias</th>
+          <th style="width:65px">Impacto</th>
+          <th style="width:70px"></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- PANEL 3 -->
+<div class="panel" id="panel3">
+  <div class="info-strip" id="p3info"></div>
+  <div id="impactList"></div>
+  <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="goStep(2)">← Voltar</button>
+    <button class="btn btn-primary" onclick="goExport()">Gerar exportação →</button>
+  </div>
+</div>
+
+<!-- PANEL 4 -->
+<div class="panel" id="panel4">
+  <div class="exp-section">
+    <h3>📧 Emails por órgão</h3>
+    <p>Expanda cada órgão para editar e copiar o email de notificação.</p>
+    <div id="emailList"></div>
+  </div>
+  <div class="exp-section">
+    <h3>📋 Nota técnica para ATOPLIS</h3>
+    <p>Edite o conteúdo abaixo antes de gerar o PDF.</p>
+    <textarea class="pdftxt" id="pdfContent"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="goStep(3)">← Voltar</button>
+      <button class="btn btn-success" onclick="genPDF()">Gerar PDF / Imprimir</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="imp" id="mBadge"></span>
+      <h3 id="mTitle"></h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="mBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+      <button class="btn btn-primary" onclick="saveModal()">💾 Guardar análise</button>
+    </div>
+  </div>
+</div>
+
+<div class="status">
+  <span id="statusTxt">Pronto — Configure a URL do Worker no topo antes de começar.</span>
+  <span>GOPLIS/DOPLIS · NAV Portugal · AIRAC Impact Tool v2.1</span>
+</div>
+
+<script>
+// ── CONSTANTS ──────────────────────────────────────────────────
+const ORGANS = [
+  {id:'TWRLIS',code:'LPPT',name:'TWR Lisboa',   email:'twrlis@nav.pt'},
+  {id:'CCLIS', code:'LPPO',name:'CC Lisboa',    email:'cclis@nav.pt'},
+  {id:'TWRPOR',code:'LPPR',name:'TWR Porto',    email:'twrpor@nav.pt'},
+  {id:'TWRCAS',code:'LPCS',name:'TWR Cascais',  email:'twrcas@nav.pt'},
+  {id:'TWRFAR',code:'LPFR',name:'TWR Faro',     email:'twrfar@nav.pt'},
+  {id:'TWRFUN',code:'LPMA',name:'TWR Funchal',  email:'twrfun@nav.pt'},
+  {id:'TWRSAN',code:'LPPS',name:'TWR Porto Santo',email:'twrsan@nav.pt'},
+];
+const SYSTEMS = [
+  'TOPSKY-ATC (COOPANS)','Strips electrónicas','ATIS',
+  'Radar / SSR','Sistemas de comunicação','Cartas de procedimento',
+  'Base de dados de navegação (AIRAC DB)','FDP (Flight Data Processing)',
+];
+const AD_ORG = {
+  'LPPT':['TWRLIS','CCLIS'],'LPPR':['TWRPOR'],'LPCS':['TWRCAS'],
+  'LPFR':['TWRFAR'],'LPMA':['TWRFUN'],'LPPS':['TWRSAN'],
+  'ENR':['CCLIS'],'LPPO':['CCLIS'],
+};
+
+// ── STATE ──────────────────────────────────────────────────────
+let changes=[], analyses={}, meta={}, curId=null;
+
+// ── WORKER CONFIG ──────────────────────────────────────────────
+function getWorkerUrl() {
+  return localStorage.getItem('airac_worker_url') || '';
+}
+function saveWorkerUrl() {
+  const url = document.getElementById('workerUrl').value.trim();
+  localStorage.setItem('airac_worker_url', url);
+}
+async function testWorker() {
+  const url = document.getElementById('workerUrl').value.trim();
+  if (!url) { alert('Cole a URL do Worker primeiro.'); return; }
+  const st = document.getElementById('cfgStatus');
+  st.textContent = '  A testar…';
+  try {
+    const r = await fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({model:'claude-sonnet-4-6',max_tokens:10,messages:[{role:'user',content:'hi'}]})
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    st.textContent = '  ✓ Ligação OK!';
+    document.getElementById('cfgBanner').classList.add('ok');
+    setStatus('Worker configurado. Pode carregar o AIRAC.');
+  } catch(e) {
+    st.textContent = '  ✗ Erro: ' + e.message;
+  }
+}
+
+// Init: load saved URL
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = getWorkerUrl();
+  if (saved) document.getElementById('workerUrl').value = saved;
+});
+
+// ── API CALL (through Worker) ──────────────────────────────────
+async function callAPI(body) {
+  const url = getWorkerUrl();
+  if (!url) throw new Error('URL do Cloudflare Worker não configurada. Configure no topo da página.');
+  const r = await fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  return d;
+}
+
+// ── UPLOAD ────────────────────────────────────────────────────
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e=>{e.preventDefault();dz.classList.add('drag')});
+dz.addEventListener('dragleave', ()=>dz.classList.remove('drag'));
+dz.addEventListener('drop', e=>{e.preventDefault();dz.classList.remove('drag');doFile(e.dataTransfer.files[0])});
+document.getElementById('fi').addEventListener('change', e=>doFile(e.target.files[0]));
+
+function doFile(f) {
+  if (!f || !f.name.endsWith('.pdf')) { alert('Por favor seleccione um ficheiro PDF.'); return; }
+  if (!getWorkerUrl()) { alert('Configure primeiro a URL do Cloudflare Worker no topo da página.'); return; }
+  document.getElementById('progWrap').style.display='block';
+  lg('A ler: ' + f.name); prog(10);
+  const r = new FileReader();
+  r.onload = async e => {
+    const b64 = e.target.result.split(',')[1];
+    lg('PDF carregado (' + Math.round(f.size/1024) + ' KB). A enviar para análise IA…'); prog(25);
+    try { await runAI(b64); }
+    catch(err) { lg('ERRO: ' + err.message); setStatus('Erro: ' + err.message); }
+  };
+  r.readAsDataURL(f);
+}
+function lg(m){const el=document.getElementById('progLog');el.textContent+=m+'\n';el.scrollTop=el.scrollHeight}
+function prog(p){document.getElementById('progFill').style.width=p+'%';document.getElementById('progLabel').textContent=p<100?'A analisar PDF…':'Análise concluída!'}
+function setStatus(m){document.getElementById('statusTxt').textContent=m}
+
+// ── AI ANALYSIS ───────────────────────────────────────────────
+async function runAI(b64) {
+  lg('A contactar API via Worker…'); prog(40);
+  const prompt = `You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment PDF and extract ALL changes from sections 1 (AIRAC) and 2 (NON-AIRAC).
+
+Return ONLY this format — no markdown, no extra text:
+METADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment: AIRAC XXX-YY"}
+[{"id":"1","ad":"LPPT","section":"2.22","description":"full description","impact":"HIGH","categories":["SID"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},...]
+
+impact: HIGH=new/changed SID/STAR/IAP/HLDG/WPT/airspace. MEDIUM=corrections to existing procedures or operational data. LOW=admin/chart-only/obstacles/emails.
+categories from: SID STAR IAP HLDG WPT PROC AIR NAV FREQ MSA GEN
+ad: ICAO code or "ENR" for en-route.`;
+
+  const data = await callAPI({
+    model:'claude-sonnet-4-6', max_tokens:4000,
+    messages:[{role:'user', content:[
+      {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}},
+      {type:'text', text:prompt}
+    ]}]
+  });
+
+  lg('Resposta recebida. A processar…'); prog(70);
+  const raw = data.content.map(c=>c.text||'').join('');
+
+  const mm = raw.match(/METADATA:(\{[^\n]+\})/);
+  meta = mm ? JSON.parse(mm[1]) : {number:'N/A',effectiveDate:'N/A',title:'AIP Amendment'};
+
+  const jm = raw.match(/\[[\s\S]*\]/);
+  if (!jm) throw new Error('Não foi possível extrair alterações. Verifique se é um AIRAC da NAV Portugal.');
+
+  changes = JSON.parse(jm[0]);
+  changes.forEach((c,i) => {
+    c.id = String(i+1);
+    analyses[c.id] = {organs: AD_ORG[c.ad]||[], systems: guessSys(c), desc:'', selected:true};
+  });
+
+  lg('✓ ' + changes.length + ' alterações identificadas.'); prog(100);
+  setTimeout(buildPanel2, 500);
+}
+
+function guessSys(c) {
+  const s=new Set(), cats=c.categories||[];
+  if(cats.some(x=>['SID','STAR','IAP','PROC'].includes(x))){s.add('TOPSKY-ATC (COOPANS)');s.add('Base de dados de navegação (AIRAC DB)');s.add('Cartas de procedimento')}
+  if(cats.includes('HLDG')||cats.includes('WPT')){s.add('TOPSKY-ATC (COOPANS)');s.add('Base de dados de navegação (AIRAC DB)')}
+  if(cats.includes('FREQ')){s.add('Sistemas de comunicação');s.add('ATIS')}
+  if(cats.includes('MSA')||cats.includes('NAV')){s.add('Radar / SSR');s.add('Base de dados de navegação (AIRAC DB)')}
+  if(cats.includes('AIR')){s.add('TOPSKY-ATC (COOPANS)');s.add('FDP (Flight Data Processing)')}
+  return [...s];
+}
+
+// ── PANEL 2 ───────────────────────────────────────────────────
+function buildPanel2() {
+  document.getElementById('p2info').innerHTML = `<strong>${meta.title||'AIP Amendment'}</strong> &nbsp;·&nbsp; Efectivo: <strong>${meta.effectiveDate}</strong> &nbsp;·&nbsp; ${changes.length} alterações identificadas`;
+  document.getElementById('amdtBadge').textContent = 'AIRAC ' + meta.number;
+  document.getElementById('btnReset').style.display = 'inline-flex';
+  const ads = [...new Set(changes.map(c=>c.ad))].sort();
+  const fa = document.getElementById('filtAd');
+  fa.innerHTML = '<option value="">Todos os AD</option>';
+  ads.forEach(a=>{const o=document.createElement('option');o.value=a;o.textContent=a;fa.appendChild(o)});
+  renderTable(changes);
+  goStep(2); updBtn();
+}
+
+function renderTable(data) {
+  const tb = document.getElementById('tbody'); tb.innerHTML='';
+  data.forEach(c => {
+    const a = analyses[c.id];
+    const tr = document.createElement('tr'); tr.dataset.id=c.id;
+    tr.innerHTML = `
+      <td><input type="checkbox" class="chk rc" data-id="${c.id}" ${a.selected?'checked':''} onchange="onChk('${c.id}',this.checked)"></td>
+      <td><strong style="font-size:13px">${c.ad}</strong></td>
+      <td style="font-size:11px;color:var(--muted)">${c.section||''}</td>
+      <td style="font-size:12px">${c.description}</td>
+      <td>${(c.categories||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</td>
+      <td><span class="imp imp-${c.impact}">${iPT(c.impact)}</span></td>
+      <td><button class="btn btn-secondary btn-sm" onclick="openModal('${c.id}')">Analisar</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function iPT(i){return i==='HIGH'?'ALTO':i==='MEDIUM'?'MÉDIO':'BAIXO'}
+function filterTable(){
+  const q=document.getElementById('srch').value.toLowerCase();
+  const imp=document.getElementById('filtImp').value;
+  const ad=document.getElementById('filtAd').value;
+  renderTable(changes.filter(c=>(!q||(c.description.toLowerCase().includes(q)||c.ad.toLowerCase().includes(q)))&&(!imp||c.impact===imp)&&(!ad||c.ad===ad)));
+}
+function selAll(v){changes.forEach(c=>analyses[c.id].selected=v);document.querySelectorAll('.rc').forEach(e=>e.checked=v);document.getElementById('masterChk').checked=v;updBtn()}
+function toggleAll(v){selAll(v)}
+function onChk(id,v){analyses[id].selected=v;updBtn()}
+function updBtn(){const n=changes.filter(c=>analyses[c.id]?.selected).length;const b=document.getElementById('btnProceed');b.disabled=n===0;b.textContent=n?`Analisar impacto (${n}) →`:'Analisar impacto →'}
+
+// ── MODAL ─────────────────────────────────────────────────────
+function openModal(id) {
+  curId = id;
+  const c = changes.find(x=>x.id===id), a = analyses[id];
+  document.getElementById('mBadge').textContent = iPT(c.impact);
+  document.getElementById('mBadge').className = 'imp imp-'+c.impact;
+  document.getElementById('mTitle').textContent = c.ad+' · '+c.section;
+  const body = document.getElementById('mBody');
+  body.innerHTML = `
+    <div class="slbl">Descrição completa</div>
+    <div class="descbox">${c.description}</div>
+    <div class="slbl">Órgãos impactados <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">(clique para sel.)</span></div>
+    <div class="organ-grid" id="oGrid">
+      ${ORGANS.map(o=>`<div class="organ-card${a.organs.includes(o.id)?' sel':''}" onclick="togOrgan('${o.id}',this)"><div class="on">${o.name}</div><div class="oc">${o.id} · ${o.code}</div></div>`).join('')}
+    </div>
+    <div class="slbl">Sistemas impactados</div>
+    <div class="sys-wrap">
+      ${SYSTEMS.map(s=>`<div class="sys-chip${a.systems.includes(s)?' sel':''}" onclick="togSys('${s}',this)">${s}</div>`).join('')}
+    </div>
+    <div class="slbl">Descrição de impacto para ATOPLIS <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">(editável)</span></div>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <button class="btn btn-secondary btn-sm" id="genBtn" onclick="genDesc('${id}')">✨ Gerar com IA</button>
+    </div>
+    <textarea class="aibox" id="descBox" rows="5" placeholder="Clique em 'Gerar com IA' ou escreva aqui…">${a.desc}</textarea>`;
+  document.getElementById('modalBg').classList.add('open');
+}
+
+function togOrgan(id,el){const a=analyses[curId];if(a.organs.includes(id)){a.organs=a.organs.filter(x=>x!==id);el.classList.remove('sel')}else{a.organs.push(id);el.classList.add('sel')}}
+function togSys(name,el){const a=analyses[curId];if(a.systems.includes(name)){a.systems=a.systems.filter(x=>x!==name);el.classList.remove('sel')}else{a.systems.push(name);el.classList.add('sel')}}
+
+async function genDesc(id) {
+  const c=changes.find(x=>x.id===id), a=analyses[id];
+  const btn=document.getElementById('genBtn');
+  btn.innerHTML='<span class="spin"></span>A gerar…'; btn.disabled=true;
+  const orgNames=a.organs.map(oid=>ORGANS.find(o=>o.id===oid)?.name||oid).join(', ')||'N/A';
+  const sysNames=a.systems.join(', ')||'N/A';
+  try {
+    const data = await callAPI({
+      model:'claude-sonnet-4-6', max_tokens:400,
+      messages:[{role:'user', content:`É especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) uma descrição de impacto para o ATOPLIS com máx 120 palavras, explicando: 1) o que foi alterado; 2) impacto nos sistemas indicados; 3) acções necessárias pelo ATOPLIS. Sem títulos, sem bullets.
+
+Alteração: ${c.description}
+AD/Secção: ${c.ad} — ${c.section} | Impacto: ${c.impact}
+Órgãos: ${orgNames} | Sistemas: ${sysNames}
+AIRAC: ${c.amdt} (efectivo ${c.effectiveDate})`}]
+    });
+    const txt = data.content?.map(x=>x.text||'').join('')||'Erro.';
+    document.getElementById('descBox').value = txt;
+    a.desc = txt;
+  } catch(err) { alert('Erro: '+err.message); }
+  finally { btn.innerHTML='✨ Gerar com IA'; btn.disabled=false; }
+}
+
+function saveModal(){const a=analyses[curId];const box=document.getElementById('descBox');if(box)a.desc=box.value;closeModal();setStatus('Análise guardada.')}
+function closeModal(){const a=analyses[curId];if(a){const b=document.getElementById('descBox');if(b)a.desc=b.value}document.getElementById('modalBg').classList.remove('open');curId=null}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+
+// ── PANEL 3 ───────────────────────────────────────────────────
+function goImpact() {
+  const sel = changes.filter(c=>analyses[c.id]?.selected);
+  document.getElementById('p3info').innerHTML = `<strong>${sel.length} alterações seleccionadas</strong>. Reveja os órgãos e sistemas. Clique em "Editar" para ajustar cada item.`;
+  const list = document.getElementById('impactList'); list.innerHTML='';
+  const byAd={};sel.forEach(c=>{if(!byAd[c.ad])byAd[c.ad]=[];byAd[c.ad].push(c)});
+  Object.entries(byAd).forEach(([ad,chgs])=>{
+    const blk=document.createElement('div');
+    blk.style.cssText='background:var(--s1);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden';
+    blk.innerHTML=`<div style="padding:8px 14px;background:var(--s2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px"><strong style="font-size:14px">${ad}</strong><span style="font-size:11px;color:var(--muted)">${chgs.length} item(ns)</span></div>`;
+    chgs.forEach(c=>{
+      const a=analyses[c.id];
+      const oT=a.organs.map(oid=>`<span class="tag">${oid}</span>`).join('')||'<span style="color:var(--muted);font-size:11px">Sem órgão definido</span>';
+      const sT=a.systems.slice(0,3).map(s=>`<span class="tag">${s}</span>`).join('')+(a.systems.length>3?`<span class="tag">+${a.systems.length-3}</span>`:'');
+      const row=document.createElement('div');
+      row.style.cssText='padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start';
+      row.innerHTML=`<span class="imp imp-${c.impact}" style="flex-shrink:0;margin-top:1px">${iPT(c.impact)}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;margin-bottom:5px">${c.description}</div>
+          <div style="margin-bottom:4px">${oT}</div>
+          <div>${sT}</div>
+          ${a.desc?`<div style="margin-top:5px;font-size:11px;color:var(--muted);font-style:italic">${a.desc.substring(0,100)}…</div>`:''}
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="openModal('${c.id}')" style="flex-shrink:0">Editar</button>`;
+      blk.appendChild(row);
+    });
+    list.appendChild(blk);
+  });
+  goStep(3);
+}
+
+// ── PANEL 4 ───────────────────────────────────────────────────
+function goExport(){buildEmails();buildPDF();goStep(4)}
+
+function buildEmails() {
+  const sel=changes.filter(c=>analyses[c.id]?.selected);
+  const container=document.getElementById('emailList');container.innerHTML='';
+  const byOrg={};ORGANS.forEach(o=>byOrg[o.id]=[]);
+  sel.forEach(c=>(analyses[c.id].organs||[]).forEach(oid=>{if(byOrg[oid])byOrg[oid].push(c)}));
+  let any=false;
+  ORGANS.forEach(org=>{
+    const items=byOrg[org.id];if(!items.length)return;any=true;
+    const subj=`AIRAC ${meta.number} — Impacto em sistemas ATC — ${org.name} (${org.code})`;
+    const bodyTxt=`Caro(a) responsável,\n\nNo âmbito do AIRAC ${meta.number} (efectivo ${meta.effectiveDate}), foram identificadas as seguintes alterações com impacto nos sistemas ATC sob responsabilidade de ${org.name} (${org.code}):\n\n`+
+      items.map((c,i)=>{const a=analyses[c.id];return `${i+1}. [${c.ad} | ${c.section}] — Impacto: ${iPT(c.impact)}\n${c.description}\n\nSistemas afectados: ${a.systems.join(', ')||'N/A'}\n\nAnálise: ${a.desc||'(pendente — abrir modal e gerar com IA)'}`}).join('\n\n---\n\n')+
+      `\n\nAgradecia confirmação do impacto nos vossos sistemas e indicação das acções a realizar.\n\nCom os melhores cumprimentos,\nGOPLIS/DOPLIS — NAV Portugal`;
+    const card=document.createElement('div');card.className='ecard';
+    card.innerHTML=`
+      <div class="ecard-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
+        <span style="font-size:16px">📧</span>
+        <span style="font-weight:600;font-size:13px">${org.name} — ${org.id}</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--muted)">${items.length} item(ns)</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:8px">▾</span>
+      </div>
+      <div class="ecard-body">
+        <div class="ef"><label>Para</label><input type="text" value="${org.email}" id="eto_${org.id}"></div>
+        <div class="ef"><label>Assunto</label><input type="text" value="${subj}" id="esubj_${org.id}"></div>
+        <div class="ef"><label>Corpo do email (editável)</label><textarea id="ebody_${org.id}">${bodyTxt}</textarea></div>
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          <button class="btn btn-secondary btn-sm" onclick="copyEmail('${org.id}')">Copiar</button>
+          <button class="btn btn-primary btn-sm" onclick="openMail('${org.id}')">Abrir no Outlook</button>
+        </div>
+      </div>`;
+    container.appendChild(card);
+  });
+  if(!any) container.innerHTML='<div class="empty">Nenhum órgão associado. Volte ao passo 3 e edite os itens.</div>';
+}
+
+function copyEmail(id){const s=document.getElementById('esubj_'+id)?.value,b=document.getElementById('ebody_'+id)?.value;if(s&&b){navigator.clipboard?.writeText('Assunto: '+s+'\n\n'+b);setStatus('Email copiado para a área de transferência.')}}
+function openMail(id){const t=encodeURIComponent(document.getElementById('eto_'+id)?.value||''),s=encodeURIComponent(document.getElementById('esubj_'+id)?.value||''),b=encodeURIComponent(document.getElementById('ebody_'+id)?.value||'');window.open(`mailto:${t}?subject=${s}&body=${b}`)}
+
+function buildPDF() {
+  const sel=changes.filter(c=>analyses[c.id]?.selected);
+  const L=[];
+  L.push(`NOTA TÉCNICA — AIRAC ${meta.number}`);
+  L.push(`Data efectiva: ${meta.effectiveDate}`);
+  L.push(`Para: ATOPLIS / DOPLIS`);
+  L.push(`De: GOPLIS — NAV Portugal`);
+  L.push(`Assunto: Impacto nos sistemas ATC — ${meta.title||'AIP Amendment AIRAC '+meta.number}`);
+  L.push(`Data de emissão: ${new Date().toLocaleDateString('pt-PT')}`);
+  L.push('');L.push('='.repeat(65));L.push('');
+  L.push(`O presente documento lista as alterações do AIRAC ${meta.number} com impacto nos sistemas ATC, para acção do ATOPLIS.`);
+  L.push('');
+  ['HIGH','MEDIUM','LOW'].forEach(imp=>{
+    const g=sel.filter(c=>c.impact===imp);if(!g.length)return;
+    L.push('-'.repeat(65));
+    L.push(`IMPACTO ${iPT(imp)} — ${g.length} item(ns)`);
+    L.push('-'.repeat(65));L.push('');
+    g.forEach((c,i)=>{
+      const a=analyses[c.id];
+      L.push(`${i+1}. ${c.ad} | ${c.section}`);
+      L.push(`   Alteração: ${c.description}`);
+      L.push(`   Categorias: ${(c.categories||[]).join(', ')}`);
+      L.push(`   Órgãos: ${a.organs.map(oid=>ORGANS.find(o=>o.id===oid)?.name||oid).join(', ')||'N/A'}`);
+      L.push(`   Sistemas: ${a.systems.join(', ')||'N/A'}`);
+      if(a.desc&&a.desc.length>5){L.push('');L.push(`   Análise de impacto:`);L.push(`   ${a.desc.replace(/\n/g,'\n   ')}`)}
+      L.push('');
+    });
+  });
+  L.push('='.repeat(65));
+  L.push(`Gerado por AIRAC Impact Tool — GOPLIS/DOPLIS — NAV Portugal — ${new Date().toLocaleDateString('pt-PT')}`);
+  document.getElementById('pdfContent').value=L.join('\n');
+}
+
+function genPDF() {
+  const c=document.getElementById('pdfContent').value;
+  const t=`AIRAC_${meta.number}_ATOPLIS_${new Date().toISOString().slice(0,10)}`;
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${t}</title><style>body{font-family:'Courier New',monospace;font-size:10.5px;line-height:1.65;padding:18mm;color:#000;background:#fff}pre{white-space:pre-wrap;word-wrap:break-word}@media print{@page{margin:18mm}body{padding:0}}</style></head><body><pre>${c.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre><script>window.onload=function(){window.print()}<\/script></body></html>`);
+  w.document.close();setStatus('PDF aberto para impressão/guardar.');
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────
+function goStep(n) {
+  [1,2,3,4].forEach(i=>{
+    document.getElementById('panel'+i).classList.toggle('active',i===n);
+    const s=document.getElementById('step'+i);
+    s.classList.toggle('active',i===n);
+    s.classList.toggle('done',i<n);
+  });
+}
+
+function resetAll() {
+  if(!confirm('Limpar todos os dados e começar de novo?'))return;
+  changes=[];analyses={};meta={};curId=null;
+  document.getElementById('fi').value='';
+  document.getElementById('progWrap').style.display='none';
+  document.getElementById('progLog').textContent='';
+  document.getElementById('amdtBadge').textContent='Nenhum AIRAC carregado';
+  document.getElementById('btnReset').style.display='none';
+  goStep(1);setStatus('Pronto.');
+}
+</script>
+</body>
+</html>
