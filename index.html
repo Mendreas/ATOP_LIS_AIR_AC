@@ -122,6 +122,17 @@ textarea.pdftxt:focus{outline:none;border-color:var(--accent)}
 .btn-sm{padding:3px 9px;font-size:11px;border-radius:5px}
 
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:4px}
+
+.eaip-panel{background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-top:8px;overflow:hidden}
+.eaip-tabs{display:flex;border-bottom:1px solid var(--border)}
+.eaip-tab{padding:6px 14px;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s}
+.eaip-tab:hover{color:var(--text)}
+.eaip-tab.active{color:var(--accentH);border-bottom-color:var(--accent)}
+.eaip-content{padding:12px;font-size:11px;line-height:1.7;max-height:200px;overflow-y:auto;white-space:pre-wrap;font-family:monospace;color:var(--text)}
+.eaip-content.loading{color:var(--muted);font-style:italic;font-family:inherit}
+.diff-add{background:rgba(63,185,80,.15);color:#7ee787;display:block;padding:0 4px;border-left:2px solid var(--low)}
+.diff-rem{background:rgba(248,81,73,.12);color:#ff9999;display:block;padding:0 4px;border-left:2px solid var(--high);text-decoration:line-through}
+.diff-ctx{display:block;padding:0 4px;color:var(--muted)}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .info-strip{background:rgba(56,139,253,.08);border:1px solid rgba(56,139,253,.2);border-radius:8px;padding:9px 13px;font-size:12px;color:var(--accentH);margin-bottom:14px}
@@ -519,6 +530,53 @@ function toggleAll(v){selAll(v)}
 function onChk(id,v){analyses[id].selected=v;updBtn()}
 function updBtn(){const n=changes.filter(c=>analyses[c.id]?.selected).length;const b=document.getElementById('btnProceed');b.disabled=n===0;b.textContent=n?`Analisar impacto (${n}) →`:'Analisar impacto →'}
 
+// ── eAIP URL BUILDER ──────────────────────────────────────────
+const EAIP_BASE = 'https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/pdf/';
+const WORKER_FETCH = true; // fetch eAIP through Worker to avoid CORS
+
+function buildEaipUrl(ad, section) {
+  // ENR sections
+  if (ad === 'ENR' || !ad || ad === 'N/A') {
+    const m = section.match(/ENR\s*([\d]+)\.([\d]+)/i);
+    if (m) return EAIP_BASE + `LP_ENR_${m[1]}_${m[2]}_en.pdf`;
+    const m2 = section.match(/([\d]+)\.([\d]+)/);
+    if (m2) return EAIP_BASE + `LP_ENR_${m2[1]}_${m2[2]}_en.pdf`;
+    return null;
+  }
+  // AD sections — e.g. section "2.22" or "2.24.10-9"
+  const adCode = ad.toUpperCase();
+  const m = section.match(/^([\d]+\.[\d]+(?:\.[\d]+)?)/);
+  if (m) {
+    const parts = m[1].split('.');
+    if (parts.length >= 3) {
+      // chart page e.g. 2.24.10 → LP_AD_2_LPPT_en.pdf (main AD file contains procedures text)
+      return EAIP_BASE + `LP_AD_2_${adCode}_en.pdf`;
+    }
+    return EAIP_BASE + `LP_AD_2_${adCode}_en.pdf`;
+  }
+  return EAIP_BASE + `LP_AD_2_${adCode}_en.pdf`;
+}
+
+// Cache to avoid re-fetching same URL
+const eaipCache = {};
+
+async function fetchEaipText(url) {
+  if (eaipCache[url]) return eaipCache[url];
+  // Fetch through Cloudflare Worker with special header
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) throw new Error('Worker não configurado');
+  const resp = await fetch(workerUrl, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({_fetchUrl: url})
+  });
+  const d = await resp.json();
+  if (d.error) throw new Error(d.error.message);
+  const text = d.text || d.content?.map(x=>x.text||'').join('') || '';
+  eaipCache[url] = text;
+  return text;
+}
+
 // ── MODAL ─────────────────────────────────────────────────────
 function openModal(id) {
   curId = id;
@@ -526,10 +584,24 @@ function openModal(id) {
   document.getElementById('mBadge').textContent = iPT(c.impact);
   document.getElementById('mBadge').className = 'imp imp-'+c.impact;
   document.getElementById('mTitle').textContent = c.ad+' · '+c.section;
+  const eaipUrl = buildEaipUrl(c.ad, c.section);
   const body = document.getElementById('mBody');
   body.innerHTML = `
-    <div class="slbl">Descrição completa</div>
+    <div class="slbl">Descrição da alteração (AMDT)</div>
     <div class="descbox">${c.description}</div>
+
+    <div class="slbl">Conteúdo actual do eAIP <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">— o que está publicado agora</span>
+      ${eaipUrl ? `<a href="${eaipUrl}" target="_blank" style="margin-left:8px;font-size:10px;color:var(--accentH);text-decoration:none">↗ PDF</a>` : ''}
+    </div>
+    <div class="eaip-panel">
+      <div class="eaip-tabs">
+        <div class="eaip-tab active" onclick="showEaipTab('raw',this)">Texto publicado</div>
+        <div class="eaip-tab" onclick="showEaipTab('diff',this)">O que mudou (IA)</div>
+      </div>
+      <div class="eaip-content loading" id="eaipRaw">A carregar eAIP...</div>
+      <div class="eaip-content" id="eaipDiff" style="display:none">Clique em "O que mudou (IA)" após o texto publicado carregar.</div>
+    </div>
+
     <div class="slbl">Órgãos impactados <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">(clique para sel.)</span></div>
     <div class="organ-grid" id="oGrid">
       ${ORGANS.map(o=>`<div class="organ-card${a.organs.includes(o.id)?' sel':''}" onclick="togOrgan('${o.id}',this)"><div class="on">${o.name}</div><div class="oc">${o.id} · ${o.code}</div></div>`).join('')}
@@ -540,10 +612,121 @@ function openModal(id) {
     </div>
     <div class="slbl">Descrição de impacto para ATOPLIS <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">(editável)</span></div>
     <div style="display:flex;gap:6px;margin-bottom:6px">
-      <button class="btn btn-secondary btn-sm" id="genBtn" onclick="genDesc('${id}')">✨ Gerar com IA</button>
+      <button class="btn btn-secondary btn-sm" id="genBtn" onclick="genDesc('${id}')">✨ Gerar com IA (inclui eAIP)</button>
     </div>
-    <textarea class="aibox" id="descBox" rows="5" placeholder="Clique em 'Gerar com IA' ou escreva aqui…">${a.desc}</textarea>`;
+    <textarea class="aibox" id="descBox" rows="5" placeholder="Clique em Gerar com IA ou escreva aqui...">${a.desc}</textarea>`;
+
   document.getElementById('modalBg').classList.add('open');
+
+  // Load eAIP content
+  if (eaipUrl) {
+    loadEaipContent(id, eaipUrl);
+  } else {
+    document.getElementById('eaipRaw').textContent = 'URL do eAIP não determinada para esta secção.';
+    document.getElementById('eaipRaw').classList.remove('loading');
+  }
+}
+
+function showEaipTab(tab, el) {
+  document.querySelectorAll('.eaip-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('eaipRaw').style.display = tab==='raw' ? 'block' : 'none';
+  document.getElementById('eaipDiff').style.display = tab==='diff' ? 'block' : 'none';
+  // If switching to diff tab and it's empty, trigger generation
+  const diffEl = document.getElementById('eaipDiff');
+  if (tab==='diff' && diffEl.textContent.trim().startsWith('Clique')) {
+    genDiff(curId);
+  }
+}
+
+async function loadEaipContent(id, url) {
+  const rawEl = document.getElementById('eaipRaw');
+  const a = analyses[id];
+  try {
+    // Use PDF.js to fetch and extract text from eAIP PDF
+    if (!window.pdfjsLib) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    if (eaipCache[url]) {
+      a.eaipText = eaipCache[url];
+      rawEl.textContent = a.eaipText;
+      rawEl.classList.remove('loading');
+      return;
+    }
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const ab = await resp.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({data: ab}).promise;
+    let text = '';
+    const maxPages = Math.min(pdf.numPages, 20);
+    for (let i = 1; i <= maxPages; i++) {
+      const page = await pdf.getPage(i);
+      const ct = await page.getTextContent();
+      text += ct.items.map(it=>it.str).join(' ') + '
+';
+    }
+    eaipCache[url] = text;
+    a.eaipText = text;
+    rawEl.textContent = text.substring(0, 3000) + (text.length > 3000 ? '
+
+[... texto truncado — ' + text.length + ' caracteres total]' : '');
+    rawEl.classList.remove('loading');
+  } catch(err) {
+    rawEl.textContent = 'Erro ao carregar eAIP: ' + err.message + '
+URL: ' + url;
+    rawEl.classList.remove('loading');
+  }
+}
+
+async function genDiff(id) {
+  const c = changes.find(x=>x.id===id), a = analyses[id];
+  const diffEl = document.getElementById('eaipDiff');
+  diffEl.innerHTML = '<span class="spin"></span> A analisar diferenças com IA...';
+  if (!a.eaipText) {
+    diffEl.textContent = 'O texto do eAIP ainda não carregou. Aguarde e tente novamente.'; return;
+  }
+  try {
+    const data = await callAPI({
+      model:'claude-sonnet-4-6', max_tokens:800,
+      messages:[{role:'user', content:`És um especialista ATC da NAV Portugal.
+Analisa o seguinte documento do eAIP publicado e a descrição da alteração do AIRAC, e explica CONCRETAMENTE o que mudou.
+
+ALTERAÇÃO DO AIRAC ${c.amdt}:
+${c.description}
+Secção: ${c.ad} ${c.section}
+
+CONTEÚDO ACTUAL PUBLICADO NO eAIP (excerto relevante):
+${a.eaipText.substring(0, 6000)}
+
+Responde em português com formato:
+O QUE ESTÁ PUBLICADO ACTUALMENTE: [resumo do conteúdo actual relevante para esta alteração, máx 80 palavras]
+
+O QUE MUDA COM O AIRAC ${c.amdt}: [descrição específica e concreta da mudança, máx 80 palavras]
+
+IMPACTO NOS SISTEMAS ATC: [impacto prático para TOPSKY/COOPANS/AIRAC DB, máx 60 palavras]`}]
+    });
+    const txt = data.content?.map(x=>x.text||'').join('')||'Erro.';
+    // Format the response with colour sections
+    const sections = txt.split(/
+
+/);
+    diffEl.innerHTML = sections.map(s => {
+      if (s.startsWith('O QUE ESTÁ PUBLICADO')) return `<span style="color:var(--muted);font-family:inherit;white-space:pre-wrap;display:block;margin-bottom:10px">${s}</span>`;
+      if (s.startsWith('O QUE MUDA')) return `<span style="color:#7ee787;font-family:inherit;white-space:pre-wrap;display:block;margin-bottom:10px">${s}</span>`;
+      if (s.startsWith('IMPACTO')) return `<span style="color:var(--accentH);font-family:inherit;white-space:pre-wrap;display:block;margin-bottom:10px">${s}</span>`;
+      return `<span style="font-family:inherit;white-space:pre-wrap;display:block;margin-bottom:6px">${s}</span>`;
+    }).join('');
+    a.diffText = txt;
+  } catch(err) {
+    diffEl.textContent = 'Erro: ' + err.message;
+  }
 }
 
 function togOrgan(id,el){const a=analyses[curId];if(a.organs.includes(id)){a.organs=a.organs.filter(x=>x!==id);el.classList.remove('sel')}else{a.organs.push(id);el.classList.add('sel')}}
@@ -555,21 +738,28 @@ async function genDesc(id) {
   btn.innerHTML='<span class="spin"></span>A gerar…'; btn.disabled=true;
   const orgNames=a.organs.map(oid=>ORGANS.find(o=>o.id===oid)?.name||oid).join(', ')||'N/A';
   const sysNames=a.systems.join(', ')||'N/A';
+  const eaipCtx = a.eaipText ? `
+
+CONTEÚDO ACTUAL DO eAIP (excerto):
+${a.eaipText.substring(0,4000)}` : '';
+  const diffCtx = a.diffText ? `
+
+ANÁLISE DE DIFERENÇAS:
+${a.diffText}` : '';
   try {
     const data = await callAPI({
-      model:'claude-sonnet-4-6', max_tokens:400,
-      messages:[{role:'user', content:`É especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) uma descrição de impacto para o ATOPLIS com máx 120 palavras, explicando: 1) o que foi alterado; 2) impacto nos sistemas indicados; 3) acções necessárias pelo ATOPLIS. Sem títulos, sem bullets.
+      model:'claude-sonnet-4-6', max_tokens:500,
+      messages:[{role:'user', content:`És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) uma descrição de impacto para o ATOPLIS com máx 150 palavras, explicando concretamente: 1) o que estava publicado; 2) o que muda especificamente; 3) impacto nos sistemas indicados; 4) acções necessárias pelo ATOPLIS. Sem títulos, sem bullets.
 
-Alteração: ${c.description}
+Alteração AIRAC ${c.amdt}: ${c.description}
 AD/Secção: ${c.ad} — ${c.section} | Impacto: ${c.impact}
-Órgãos: ${orgNames} | Sistemas: ${sysNames}
-AIRAC: ${c.amdt} (efectivo ${c.effectiveDate})`}]
+Órgãos: ${orgNames} | Sistemas: ${sysNames}${eaipCtx}${diffCtx}`}]
     });
     const txt = data.content?.map(x=>x.text||'').join('')||'Erro.';
     document.getElementById('descBox').value = txt;
     a.desc = txt;
   } catch(err) { alert('Erro: '+err.message); }
-  finally { btn.innerHTML='✨ Gerar com IA'; btn.disabled=false; }
+  finally { btn.innerHTML='✨ Gerar com IA (inclui eAIP)'; btn.disabled=false; }
 }
 
 function saveModal(){const a=analyses[curId];const box=document.getElementById('descBox');if(box)a.desc=box.value;closeModal();setStatus('Análise guardada.')}
