@@ -5,182 +5,321 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AIRAC Impact Tool — NAV Portugal</title>
 <style>
-:root{--bg:#0d1117;--s1:#161b22;--s2:#21262d;--s3:#2d333b;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#388bfd;--accentH:#58a6ff;--high:#f85149;--med:#e3b341;--low:#3fb950;--green:#238636}
+:root{
+  --bg:#f5ede6;
+  --s1:#ffffff;
+  --s2:#fdf8f5;
+  --s3:#f0e4d8;
+  --border:#dfc8b8;
+  --border2:#cdb09e;
+  --text:#3d1e30;
+  --muted:#9a7870;
+  --nav:#5d2e46;
+  --nav2:#7a3d5c;
+  --nav3:#b87d6d;
+  --navglow:rgba(93,46,70,0.18);
+  --high:#b91c1c;
+  --med:#b87d6d;
+  --low:#4a7a4a;
+  --green:#3a6b3a;
+  --highbg:rgba(185,28,28,0.07);
+  --medbg:rgba(184,125,109,0.10);
+  --lowbg:rgba(74,122,74,0.07);
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.5;min-height:100vh}
-#cfgBanner{background:#1a0a00;border-bottom:1px solid #f0c000;padding:10px 20px;font-size:12px;color:#f0c000;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-#cfgBanner input{background:#0d0800;border:1px solid #f0c000;border-radius:5px;padding:4px 10px;color:#f0c000;font-size:12px;width:360px;font-family:monospace}
-#cfgBanner button{padding:4px 12px;border-radius:5px;border:1px solid #f0c000;background:transparent;color:#f0c000;cursor:pointer;font-size:12px}
-#cfgBanner button:hover{background:#f0c000;color:#000}
-#cfgBanner.ok{background:#0d2200;border-color:var(--low);color:var(--low)}
-header{background:var(--s1);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.logo{width:30px;height:30px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0}
-header h1{font-size:15px;font-weight:600}
-header p{font-size:11px;color:var(--muted)}
-.hbadge{margin-left:auto;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;color:var(--muted);white-space:nowrap}
-.steps{display:flex;background:var(--s1);border-bottom:1px solid var(--border)}
-.step{flex:1;padding:9px 10px;text-align:center;font-size:11px;color:var(--muted);border-right:1px solid var(--border);transition:all .2s}
-.step:last-child{border-right:none}
-.step.active{color:var(--accentH);background:var(--s2);font-weight:600}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.5;min-height:100vh;background-image:radial-gradient(ellipse at 20% 0%,rgba(212,165,165,0.15) 0%,transparent 50%),radial-gradient(ellipse at 80% 100%,rgba(93,46,70,0.06) 0%,transparent 50%)}
+
+/* ── CONFIG BANNER ── */
+#cfgBanner{background:#fdf2ee;border-bottom:1px solid #dfc8b8;padding:10px 24px;font-size:12px;color:#7a3d5c;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#cfgBanner input{background:#fff;border:1px solid #cdb09e;border-radius:6px;padding:5px 12px;color:#5d2e46;font-size:12px;width:380px;font-family:monospace;transition:border-color .2s}
+#cfgBanner input:focus{outline:none;border-color:#b87d6d}
+#cfgBanner button{padding:5px 14px;border-radius:6px;border:1px solid #cdb09e;background:transparent;color:#7a3d5c;cursor:pointer;font-size:12px;transition:all .2s}
+#cfgBanner button:hover{background:#f0e4d8;border-color:#b87d6d}
+#cfgBanner.ok{background:#f0fdf4;border-color:#86efac;color:#166534}
+#cfgStatus{font-weight:600}
+
+/* ── HEADER ── */
+header{background:linear-gradient(135deg,#5d2e46 0%,#7a3d5c 60%,#8a4a6a 100%);border-bottom:1px solid #4a2338;padding:0 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:relative;overflow:hidden;min-height:64px;box-shadow:0 2px 14px rgba(93,46,70,0.3)}
+header::before{content:'';position:absolute;top:0;right:0;width:300px;height:100%;background:radial-gradient(ellipse at right,rgba(212,165,165,0.15) 0%,transparent 70%);pointer-events:none}
+header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#d4a5a5,transparent)}
+.logo{width:40px;height:40px;background:rgba(212,165,165,0.25);border:1.5px solid rgba(212,165,165,0.45);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex-shrink:0;position:relative;z-index:1}
+.header-text{position:relative;z-index:1}
+header h1{font-size:16px;font-weight:700;letter-spacing:0.3px;color:#fff}
+header p{font-size:11px;color:rgba(212,165,165,0.8);margin-top:1px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:10px;position:relative;z-index:1}
+.hbadge{background:rgba(212,165,165,0.2);border:1px solid rgba(212,165,165,0.4);border-radius:8px;padding:4px 14px;font-size:11px;color:#e8d5c4;font-weight:600;white-space:nowrap;letter-spacing:0.3px}
+.hbadge.loaded{background:rgba(212,165,165,0.3);border-color:rgba(212,165,165,0.6)}
+#btnReset{display:none;padding:5px 12px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600;transition:all .2s}
+#btnReset:hover{background:rgba(185,28,28,0.5);border-color:rgba(212,165,165,0.6)}
+
+/* ── STEP BAR ── */
+.steps{background:var(--s1);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;gap:0;box-shadow:0 1px 4px rgba(93,46,70,0.08)}
+.step{display:flex;align-items:center;gap:8px;padding:14px 20px 14px 16px;font-size:11px;color:var(--muted);cursor:default;position:relative;transition:all .2s;white-space:nowrap}
+.step:not(:last-child)::after{content:'›';position:absolute;right:-2px;color:var(--border2);font-size:16px;z-index:1}
+.step-num{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;transition:all .3s;color:var(--muted)}
+.step-label{font-weight:500}
+.step.active{color:var(--nav)}
+.step.active .step-num{background:linear-gradient(135deg,var(--nav),var(--nav2));border-color:transparent;color:#fff;box-shadow:0 2px 8px var(--navglow)}
+.step.active .step-label{color:var(--nav);font-weight:700}
 .step.done{color:var(--low)}
-.panel{display:none;padding:20px}
+.step.done .step-num{background:#f0fdf0;border-color:#a8d8a8;color:var(--low)}
+.step.done .step-label{color:var(--low)}
+
+/* ── PANELS ── */
+.panel{display:none;padding:24px;max-width:1200px;margin:0 auto}
 .panel.active{display:block}
-.upload-zone{border:2px dashed var(--border);border-radius:12px;padding:50px 30px;text-align:center;cursor:pointer;transition:all .2s;background:var(--s1)}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:rgba(56,139,253,.06)}
-.upload-zone h2{font-size:17px;margin:12px 0 6px;font-weight:600}
-.upload-zone p{color:var(--muted);font-size:12px}
-.prog-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin:8px 0}
-.prog-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .4s}
-.prog-log{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11px;color:var(--muted);font-family:monospace;max-height:110px;overflow-y:auto;white-space:pre-wrap;margin-top:6px}
-.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
-.toolbar input,.toolbar select{background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--text);font-size:12px}
-.toolbar input:focus,.toolbar select:focus{outline:none;border-color:var(--accent)}
+
+/* ── UPLOAD ZONE ── */
+.upload-zone{border:2px dashed var(--border2);border-radius:16px;padding:60px 40px;text-align:center;cursor:pointer;transition:all .3s;background:var(--s1);position:relative;overflow:hidden;box-shadow:0 2px 12px rgba(93,46,70,0.08)}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--nav2);background:linear-gradient(135deg,#fdf5f0,#f5e8e0);box-shadow:0 4px 24px rgba(93,46,70,0.12)}
+.upload-icon{width:72px;height:72px;background:linear-gradient(135deg,rgba(93,46,70,0.08),rgba(184,125,109,0.08));border:1.5px solid rgba(93,46,70,0.18);border-radius:18px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;transition:all .3s}
+.upload-zone:hover .upload-icon{background:linear-gradient(135deg,rgba(93,46,70,0.14),rgba(184,125,109,0.14));box-shadow:0 4px 16px var(--navglow);transform:translateY(-2px)}
+.upload-zone h2{font-size:18px;margin:0 0 8px;font-weight:700;color:var(--text)}
+.upload-zone p{color:var(--muted);font-size:12px;margin-bottom:4px}
+.upload-hint{display:inline-block;margin-top:16px;padding:2px 10px;background:rgba(93,46,70,0.06);border:1px solid rgba(93,46,70,0.18);border-radius:5px;font-size:10px;color:var(--nav);font-family:monospace;letter-spacing:0.5px}
+
+/* ── PROGRESS ── */
+#progWrap{display:none;margin-top:20px;background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
+#progWrap p{font-size:12px;margin-bottom:8px;color:var(--text);font-weight:500}
+.prog-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin:8px 0}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--nav),var(--nav3));border-radius:3px;transition:width .4s ease}
+.prog-log{background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px;color:#4a6785;font-family:'Cascadia Code','Consolas',monospace;max-height:110px;overflow-y:auto;white-space:pre-wrap;margin-top:8px;line-height:1.7}
+
+/* ── INFO STRIP ── */
+.info-strip{background:#fdf0ec;border:1px solid #dfc8b8;border-radius:10px;padding:10px 16px;font-size:12px;color:#7a3d5c;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.info-strip strong{color:#5d2e46}
+
+/* ── TOOLBAR ── */
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.toolbar input,.toolbar select{background:var(--s1);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;transition:border-color .2s;outline:none}
+.toolbar input:focus,.toolbar select:focus{border-color:var(--nav2);box-shadow:0 0 0 2px rgba(0,71,171,0.15)}
+.toolbar select option{background:var(--s2)}
+
+/* ── TABLE ── */
+.table-wrap{background:var(--s1);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(93,46,70,0.08)}
 .tbl{width:100%;border-collapse:collapse}
-.tbl th{text-align:left;padding:8px 10px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--s1);font-weight:500}
-.tbl td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
-.tbl tr:hover td{background:rgba(56,139,253,.03)}
-.tbl tr:last-child td{border-bottom:none}
-.imp{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.3px}
-.imp-HIGH{background:rgba(248,81,73,.15);color:var(--high);border:1px solid rgba(248,81,73,.3)}
-.imp-MEDIUM{background:rgba(227,179,65,.15);color:var(--med);border:1px solid rgba(227,179,65,.3)}
-.imp-LOW{background:rgba(63,185,80,.12);color:var(--low);border:1px solid rgba(63,185,80,.25)}
-.tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:500;margin:1px;background:var(--s2);color:var(--muted);border:1px solid var(--border)}
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
+.tbl thead{background:var(--s2)}
+.tbl th{text-align:left;padding:10px 12px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;border-bottom:1px solid var(--border);font-weight:700}
+.tbl td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;font-size:12px}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl tbody tr{transition:background .15s}
+.tbl tbody tr:hover td{background:#fdf0ec}
+
+/* ── BADGES ── */
+.imp{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:.4px}
+.imp::before{content:'';width:5px;height:5px;border-radius:50%}
+.imp-HIGH{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+.imp-HIGH::before{background:#dc2626}
+.imp-MEDIUM{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.imp-MEDIUM::before{background:#b45309}
+.imp-LOW{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+.imp-LOW::before{background:#16a34a}
+.tag{display:inline-flex;align-items:center;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600;margin:1px;background:#faeae6;color:#7a3d5c;border:1px solid #dfc8b8;letter-spacing:.3px}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;letter-spacing:.2px}
+.btn-primary{background:linear-gradient(135deg,var(--nav),var(--nav2));color:#fff;box-shadow:0 2px 8px rgba(0,71,171,0.25)}
+.btn-primary:hover:not(:disabled){background:linear-gradient(135deg,#003d99,var(--nav));box-shadow:0 4px 14px rgba(0,71,171,0.35);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-secondary{background:#fff;color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--border2);background:var(--s2)}
+.btn-success{background:linear-gradient(135deg,#166534,#16a34a);color:#fff;box-shadow:0 2px 8px rgba(22,163,74,0.2)}
+.btn-success:hover{box-shadow:0 4px 12px rgba(22,163,74,0.35);transform:translateY(-1px)}
+.btn-danger{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+.btn-danger:hover{background:#fee2e2}
+.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px}
+
+/* ── MODAL ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(61,30,48,0.4);z-index:200;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
-.modal{background:var(--s1);border:1px solid var(--border);border-radius:12px;width:100%;max-width:680px;margin:auto}
-.modal-hdr{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px}
-.modal-hdr h3{font-size:14px;font-weight:600;flex:1;line-height:1.4}
-.modal-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0}
-.modal-body{padding:18px;max-height:68vh;overflow-y:auto}
-.modal-foot{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
-.slbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:14px 0 7px}
+.modal{background:var(--s1);border:1px solid var(--border);border-radius:16px;width:100%;max-width:700px;margin:auto;box-shadow:0 16px 48px rgba(93,46,70,0.2)}
+.modal-hdr{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,#fdf0ec 0%,var(--s1) 100%);border-radius:16px 16px 0 0}
+.modal-hdr h3{font-size:15px;font-weight:700;flex:1;line-height:1.4;color:var(--text)}
+.modal-close{background:var(--s2);border:1px solid var(--border);color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;flex-shrink:0;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.modal-close:hover{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
+.modal-body{padding:20px;max-height:68vh;overflow-y:auto}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:var(--s2);border-radius:0 0 16px 16px}
+
+/* ── MODAL INTERNALS ── */
+.slbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:var(--nav);margin:16px 0 8px;display:flex;align-items:center;gap:6px}
 .slbl:first-child{margin-top:0}
-.descbox{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;line-height:1.6}
-.organ-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:6px}
-.organ-card{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;transition:all .15s}
-.organ-card:hover{border-color:var(--muted)}
-.organ-card.sel{border-color:var(--accent);background:rgba(56,139,253,.1)}
-.organ-card .on{font-weight:600;font-size:12px}
-.organ-card .oc{font-size:10px;color:var(--muted)}
-.sys-wrap{display:flex;flex-wrap:wrap;gap:5px}
-.sys-chip{padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--s2);font-size:11px;cursor:pointer;transition:all .15s;color:var(--muted)}
-.sys-chip:hover{border-color:var(--muted);color:var(--text)}
-.sys-chip.sel{border-color:var(--accent);background:rgba(56,139,253,.12);color:var(--accentH)}
-textarea.aibox{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;line-height:1.6;min-height:70px}
-textarea.aibox:focus{outline:none;border-color:var(--accent)}
-.eaip-panel{background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-top:6px;overflow:hidden}
-.eaip-tabs{display:flex;border-bottom:1px solid var(--border)}
-.eaip-tab{padding:6px 14px;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s}
+.slbl::after{content:'';flex:1;height:1px;background:var(--border)}
+.descbox{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.7;color:var(--text)}
+.organ-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.organ-card{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;transition:all .2s;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+.organ-card:hover{border-color:var(--border2);box-shadow:0 2px 6px rgba(0,0,0,0.08)}
+.organ-card.sel{border-color:var(--nav2);background:#fdf0ec;box-shadow:0 0 0 2px rgba(93,46,70,0.12)}
+.organ-card .on{font-weight:700;font-size:12px;color:var(--text)}
+.organ-card .oc{font-size:10px;color:var(--muted);margin-top:2px}
+.sys-wrap{display:flex;flex-wrap:wrap;gap:6px}
+.sys-chip{padding:4px 11px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:11px;cursor:pointer;transition:all .15s;color:var(--muted)}
+.sys-chip:hover{border-color:var(--border2);color:var(--text)}
+.sys-chip.sel{border-color:var(--nav2);background:#fdf0ec;color:var(--nav);font-weight:600}
+textarea.aibox{width:100%;background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;line-height:1.7;min-height:80px;transition:border-color .2s}
+textarea.aibox:focus{outline:none;border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,70,0.08)}
+
+/* ── eAIP PANEL ── */
+.eaip-panel{background:var(--s2);border:1px solid var(--border);border-radius:10px;margin-top:6px;overflow:hidden}
+.eaip-tabs{display:flex;border-bottom:1px solid var(--border);background:#fff}
+.eaip-tab{padding:7px 16px;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s;font-weight:500}
 .eaip-tab:hover{color:var(--text)}
-.eaip-tab.active{color:var(--accentH);border-bottom-color:var(--accent)}
-.eaip-content{padding:10px;font-size:11px;line-height:1.6;max-height:180px;overflow-y:auto;white-space:pre-wrap;font-family:monospace;color:var(--text)}
+.eaip-tab.active{color:var(--nav);border-bottom-color:var(--nav2);background:#fdf0ec}
+.eaip-content{padding:12px;font-size:11px;line-height:1.7;max-height:180px;overflow-y:auto;white-space:pre-wrap;font-family:'Cascadia Code','Consolas',monospace;color:var(--text)}
 .eaip-content.dim{color:var(--muted);font-style:italic;font-family:inherit}
-.exp-section{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px}
-.exp-section h3{font-size:14px;font-weight:600;margin-bottom:3px}
-.exp-section>p{font-size:12px;color:var(--muted);margin-bottom:12px}
-.ecard{background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
-.ecard-hdr{padding:10px 14px;display:flex;align-items:center;gap:8px;cursor:pointer}
-.ecard-hdr:hover{background:var(--s3)}
-.ecard-body{padding:14px;display:none}
+
+/* ── IMPACT CARDS ── */
+.exp-section{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
+.exp-section h3{font-size:15px;font-weight:700;margin-bottom:4px;color:var(--text)}
+.exp-section>p{font-size:12px;color:var(--muted);margin-bottom:16px}
+
+/* ── AD GROUP ── */
+.ad-block{background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.ad-block-hdr{padding:10px 16px;background:linear-gradient(90deg,#fdf0ec,#fdf8f5);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.ad-code{font-size:15px;font-weight:800;color:var(--nav);letter-spacing:.5px}
+.ad-count{font-size:11px;color:var(--muted)}
+.impact-row{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:flex-start;transition:background .15s}
+.impact-row:last-child{border-bottom:none}
+.impact-row:hover{background:#f8fafc}
+.impact-desc{font-size:12px;margin-bottom:6px;color:var(--text);line-height:1.5}
+.impact-meta{font-size:11px;color:var(--muted);font-style:italic;margin-top:5px}
+
+/* ── ECARD (email) ── */
+.ecard{background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden;transition:border-color .2s;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.ecard:hover{border-color:var(--border2)}
+.ecard-hdr{padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .15s}
+.ecard-hdr:hover{background:var(--s2)}
+.ecard-hdr-icon{width:34px;height:34px;background:#faeae6;border:1px solid #dfc8b8;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.ecard-name{font-weight:700;font-size:13px;color:var(--text)}
+.ecard-sub{font-size:10px;color:var(--muted)}
+.ecard-body{padding:16px;display:none;border-top:1px solid var(--border)}
 .ecard-body.open{display:block}
-.ef{margin-bottom:10px}
-.ef label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}
-.ef input,.ef textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 9px;color:var(--text);font-size:12px;font-family:inherit}
-.ef textarea{min-height:120px;resize:vertical;line-height:1.5}
-.ef input:focus,.ef textarea:focus{outline:none;border-color:var(--accent)}
-textarea.pdftxt{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);font-size:11px;font-family:'Courier New',monospace;min-height:260px;resize:vertical;line-height:1.65}
-textarea.pdftxt:focus{outline:none;border-color:var(--accent)}
-.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s}
-.btn-primary{background:var(--accent);color:#fff}
-.btn-primary:hover{background:var(--accentH)}
-.btn-primary:disabled{opacity:.4;cursor:not-allowed}
-.btn-secondary{background:var(--s2);color:var(--text);border:1px solid var(--border)}
-.btn-secondary:hover{border-color:var(--muted)}
-.btn-success{background:var(--green);color:#fff}
-.btn-danger{background:rgba(248,81,73,.15);color:var(--high);border:1px solid rgba(248,81,73,.3)}
-.btn-sm{padding:3px 9px;font-size:11px;border-radius:5px}
-.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:4px}
+.ef{margin-bottom:12px}
+.ef label{display:block;font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.ef input,.ef textarea{width:100%;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:12px;font-family:inherit;transition:border-color .2s;outline:none}
+.ef textarea{min-height:130px;resize:vertical;line-height:1.6}
+.ef input:focus,.ef textarea:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,70,0.08)}
+textarea.pdftxt{width:100%;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;color:var(--text);font-size:11px;font-family:'Cascadia Code','Consolas','Courier New',monospace;min-height:280px;resize:vertical;line-height:1.7;outline:none;transition:border-color .2s}
+textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,70,0.08)}
+
+/* ── SPINNER ── */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
-.info-strip{background:rgba(56,139,253,.08);border:1px solid rgba(56,139,253,.2);border-radius:8px;padding:9px 13px;font-size:12px;color:var(--accentH);margin-bottom:14px}
-.empty{text-align:center;padding:40px;color:var(--muted);font-size:12px}
-.status{background:var(--s1);border-top:1px solid var(--border);padding:6px 20px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
-.chk{accent-color:var(--accent);cursor:pointer;width:14px;height:14px}
-::-webkit-scrollbar{width:7px;height:7px}
+
+/* ── MISC ── */
+.empty{text-align:center;padding:48px;color:var(--muted);font-size:13px}
+.chk{accent-color:var(--nav);cursor:pointer;width:14px;height:14px}
+
+/* ── STATUS BAR ── */
+.status{background:var(--s1);border-top:1px solid var(--border);padding:7px 24px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.status-brand{display:flex;align-items:center;gap:6px;color:var(--nav3);font-weight:600;font-size:10px;letter-spacing:.5px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--low);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 </style>
 </head>
 <body>
 
 <div id="cfgBanner">
-  <span>&#9888; Cole a URL do Cloudflare Worker:</span>
+  <span>⚠ Configurar URL do Cloudflare Worker:</span>
   <input type="text" id="workerUrl" placeholder="https://curly-sound-5d5e.mendreas.workers.dev" oninput="saveUrl()">
-  <button onclick="testWorker()">Testar ligacao</button>
+  <button onclick="testWorker()">Testar ligação</button>
   <span id="cfgStatus"></span>
 </div>
 
 <header>
-  <div class="logo">&#9992;</div>
-  <div>
+  <div class="logo">✈</div>
+  <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Analise de impacto ATC &middot; notificacao ao ATOPLIS</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.3</p>
   </div>
-  <div class="hbadge" id="amdtBadge">Nenhum AIRAC carregado</div>
-  <button id="btnReset" class="btn btn-danger btn-sm" style="display:none;margin-left:8px" onclick="resetAll()">Limpar</button>
+  <div class="header-right">
+    <div class="hbadge" id="amdtBadge">Nenhum AIRAC carregado</div>
+    <button id="btnReset" class="btn btn-danger btn-sm" onclick="resetAll()">✕ Limpar</button>
+  </div>
 </header>
 
 <div class="steps">
-  <div class="step active" id="step1">1 &middot; Upload AIRAC</div>
-  <div class="step" id="step2">2 &middot; Alteracoes</div>
-  <div class="step" id="step3">3 &middot; Impacto</div>
-  <div class="step" id="step4">4 &middot; Exportacao</div>
+  <div class="step active" id="step1">
+    <div class="step-num">1</div>
+    <span class="step-label">Upload AIRAC</span>
+  </div>
+  <div class="step" id="step2">
+    <div class="step-num">2</div>
+    <span class="step-label">Alterações</span>
+  </div>
+  <div class="step" id="step3">
+    <div class="step-num">3</div>
+    <span class="step-label">Impacto</span>
+  </div>
+  <div class="step" id="step4">
+    <div class="step-num">4</div>
+    <span class="step-label">Exportação</span>
+  </div>
 </div>
 
+<!-- PASSO 1 -->
 <div class="panel active" id="panel1">
   <div class="upload-zone" id="dropZone" onclick="document.getElementById('fi').click()">
-    <div style="font-size:44px">&#128196;</div>
+    <div class="upload-icon">📄</div>
     <h2>Carregar PDF do AIRAC</h2>
     <p>Clique ou arraste o ficheiro PDF do AIP Amendment</p>
-    <p style="margin-top:6px;font-size:11px">Formato: LP_Amdt_A_YYYY_NNN_en.pdf</p>
+    <div class="upload-hint">LP_Amdt_A_YYYY_NNN_en.pdf</div>
     <br>
-    <button class="btn btn-secondary" onclick="event.stopPropagation();document.getElementById('fi').click()">Seleccionar ficheiro</button>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="event.stopPropagation();document.getElementById('fi').click()">
+      Seleccionar ficheiro
+    </button>
   </div>
   <input type="file" id="fi" accept=".pdf" style="display:none">
-  <div id="progWrap" style="display:none;margin-top:16px">
-    <p style="font-size:12px;margin-bottom:4px" id="progLabel">A analisar PDF...</p>
+  <div id="progWrap">
+    <p id="progLabel">A analisar PDF...</p>
     <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
     <div class="prog-log" id="progLog"></div>
   </div>
 </div>
 
+<!-- PASSO 2 -->
 <div class="panel" id="panel2">
-  <div class="info-strip" id="p2info"></div>
+  <div class="info-strip" id="p2info">ℹ️ &nbsp;<span>Carregue um AIRAC para começar.</span></div>
   <div class="toolbar">
-    <input type="text" placeholder="Pesquisar..." id="srch" style="width:160px" oninput="filterTable()">
+    <input type="text" placeholder="🔍  Pesquisar..." id="srch" style="width:180px" oninput="filterTable()">
+    <select id="filtSec" onchange="filterTable()">
+      <option value="">Todas as secções</option>
+      <option value="AD">AD — Aeródromo</option>
+      <option value="ENR">ENR — Rota</option>
+      <option value="GEN">GEN — Geral</option>
+    </select>
+    <select id="filtCat" onchange="filterTable()">
+      <option value="">Todas as categorias</option>
+    </select>
     <select id="filtImp" onchange="filterTable()">
       <option value="">Todos os impactos</option>
       <option value="HIGH">Alto</option>
-      <option value="MEDIUM">Medio</option>
+      <option value="MEDIUM">Médio</option>
       <option value="LOW">Baixo</option>
     </select>
     <select id="filtAd" onchange="filterTable()"><option value="">Todos os AD</option></select>
-    <div style="margin-left:auto;display:flex;gap:6px">
+    <div style="margin-left:auto;display:flex;gap:8px">
       <button class="btn btn-secondary btn-sm" onclick="selAll(true)">Sel. todos</button>
       <button class="btn btn-secondary btn-sm" onclick="selAll(false)">Limpar sel.</button>
-      <button class="btn btn-primary btn-sm" id="btnProceed" onclick="goImpact()" disabled>Analisar impacto &rarr;</button>
+      <button class="btn btn-primary btn-sm" id="btnProceed" onclick="goImpact()" disabled>Analisar impacto →</button>
     </div>
   </div>
-  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+  <div class="table-wrap">
     <table class="tbl">
       <thead>
         <tr>
-          <th style="width:32px"><input type="checkbox" class="chk" id="masterChk" onchange="toggleAll(this.checked)"></th>
-          <th style="width:65px">AD</th>
-          <th style="width:90px">Seccao</th>
-          <th>Descricao</th>
-          <th style="width:140px">Categorias</th>
-          <th style="width:65px">Impacto</th>
-          <th style="width:70px"></th>
+          <th style="width:36px"><input type="checkbox" class="chk" id="masterChk" onchange="toggleAll(this.checked)"></th>
+          <th style="width:70px">AD</th>
+          <th style="width:95px">Secção</th>
+          <th>Descrição</th>
+          <th style="width:150px">Categorias</th>
+          <th style="width:80px">Impacto</th>
+          <th style="width:80px"></th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -188,53 +327,63 @@ textarea.pdftxt:focus{outline:none;border-color:var(--accent)}
   </div>
 </div>
 
+<!-- PASSO 3 -->
 <div class="panel" id="panel3">
-  <div class="info-strip" id="p3info"></div>
+  <div class="info-strip" id="p3info">ℹ️ &nbsp;<span>Reveja órgãos e sistemas antes de exportar.</span></div>
   <div id="impactList"></div>
-  <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
-    <button class="btn btn-secondary" onclick="goStep(2)">&larr; Voltar</button>
-    <button class="btn btn-primary" onclick="goExport()">Gerar exportacao &rarr;</button>
+  <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+    <button class="btn btn-secondary" onclick="goStep(2)">← Voltar</button>
+    <button class="btn btn-primary" onclick="goExport()">Gerar exportação →</button>
   </div>
 </div>
 
+<!-- PASSO 4 -->
 <div class="panel" id="panel4">
   <div class="exp-section">
-    <h3>&#128231; Emails por orgao</h3>
-    <p>Expanda cada orgao para editar e copiar o email de notificacao.</p>
+    <h3>✉ Emails por órgão</h3>
+    <p>Expanda cada órgão para editar e copiar o email de notificação.</p>
     <div id="emailList"></div>
   </div>
   <div class="exp-section">
-    <h3>&#128203; Nota tecnica para ATOPLIS</h3>
-    <p>Edite o conteudo abaixo antes de gerar o PDF.</p>
+    <h3>📋 Nota técnica para ATOPLIS</h3>
+    <p>Edite o conteúdo abaixo antes de gerar o PDF.</p>
     <textarea class="pdftxt" id="pdfContent"></textarea>
-    <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
-      <button class="btn btn-secondary" onclick="goStep(3)">&larr; Voltar</button>
-      <button class="btn btn-success" onclick="genPDF()">Gerar PDF / Imprimir</button>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="goStep(3)">← Voltar</button>
+      <button class="btn btn-success" onclick="genPDF()">🖨 Gerar PDF / Imprimir</button>
     </div>
   </div>
 </div>
 
+<!-- MODAL -->
 <div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="modal-hdr">
       <span class="imp" id="mBadge"></span>
       <h3 id="mTitle"></h3>
-      <button class="modal-close" onclick="closeModal()">&#10005;</button>
+      <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" id="mBody"></div>
     <div class="modal-foot">
       <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
-      <button class="btn btn-primary" onclick="saveModal()">Guardar analise</button>
+      <button class="btn btn-primary" onclick="saveModal()">Guardar análise</button>
     </div>
   </div>
 </div>
 
 <div class="status">
-  <span id="statusTxt">Pronto &mdash; Configure a URL do Worker no topo.</span>
-  <span>GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.2</span>
+  <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
+  <div class="status-brand">
+    <div class="status-dot"></div>
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.3
+  </div>
 </div>
 
 <script>
+// ADs da FIR de Lisboa (continente + Madeira). Açores (Santa Maria FIR) excluídos.
+const LISBOA_FIR=new Set(['LPPT','LPPR','LPCS','LPFR','LPBJ','LPVR','LPMA','LPPS','LPPO','ENR','GEN','N/A']);
+const AZORES_AD=new Set(['LPPD','LPGR','LPHR','LPPI','LPSJ','LPLA','LPFL','LPCO','LPAZ']);
+
 const ORGANS=[
   {id:'TWRLIS',code:'LPPT',name:'TWR Lisboa',  email:'twrlis@nav.pt'},
   {id:'CCLIS', code:'LPPO',name:'CC Lisboa',   email:'cclis@nav.pt'},
@@ -244,7 +393,7 @@ const ORGANS=[
   {id:'TWRFUN',code:'LPMA',name:'TWR Funchal', email:'twrfun@nav.pt'},
   {id:'TWRSAN',code:'LPPS',name:'TWR Porto Santo',email:'twrsan@nav.pt'}
 ];
-const SYSTEMS=['TOPSKY-ATC (COOPANS)','Strips electronicas','ATIS','Radar / SSR','Sistemas de comunicacao','Cartas de procedimento','Base de dados de navegacao (AIRAC DB)','FDP (Flight Data Processing)'];
+const SYSTEMS=['TOPSKY-ATC (COOPANS)','Strips electrónicas','ATIS','Radar / SSR','Sistemas de comunicação','Cartas de procedimento','Base de dados de navegação (AIRAC DB)','FDP (Flight Data Processing)'];
 const AD_ORG={'LPPT':['TWRLIS','CCLIS'],'LPPR':['TWRPOR'],'LPCS':['TWRCAS'],'LPFR':['TWRFAR'],'LPMA':['TWRFUN'],'LPPS':['TWRSAN'],'ENR':['CCLIS'],'LPPO':['CCLIS']};
 const EAIP='https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/pdf/';
 
@@ -262,17 +411,17 @@ async function testWorker(){
     const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:10,messages:[{role:'user',content:'hi'}]})});
     const d=await r.json();
     if(d.error)throw new Error(d.error.message);
-    st.textContent=' Ligacao OK!';
+    st.textContent=' ✓ Ligação OK!';
     document.getElementById('cfgBanner').classList.add('ok');
     setStatus('Worker configurado. Pode carregar o AIRAC.');
-  }catch(e){st.textContent=' Erro: '+e.message;}
+  }catch(e){st.textContent=' ✗ Erro: '+e.message;}
 }
 window.addEventListener('DOMContentLoaded',()=>{const s=getUrl();document.getElementById('workerUrl').value=s;});
 
 // ── API ──
 async function callAPI(body){
   const url=getUrl();
-  if(!url)throw new Error('URL do Worker nao configurada.');
+  if(!url)throw new Error('URL do Worker não configurada.');
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json();
   if(d.error)throw new Error(d.error.message);
@@ -317,15 +466,15 @@ function doFile(f){
   lg('A ler: '+f.name);prog(10);
   (async()=>{
     try{
-      lg('A extrair texto do PDF (primeiras 8 paginas)...');prog(20);
+      lg('A extrair texto do PDF (primeiras 8 páginas)...');prog(20);
       const txt=await pdfToText({data:await f.arrayBuffer()},8);
-      lg('Texto extraido ('+txt.length+' chars). A enviar para analise...');prog(35);
+      lg('Texto extraído ('+txt.length+' chars). A enviar para análise...');prog(35);
       await runAI(txt);
     }catch(e){lg('ERRO: '+e.message);setStatus('Erro: '+e.message);}
   })();
 }
 function lg(m){const el=document.getElementById('progLog');el.textContent+=m+'\n';el.scrollTop=el.scrollHeight;}
-function prog(p){document.getElementById('progFill').style.width=p+'%';document.getElementById('progLabel').textContent=p<100?'A analisar PDF...':'Analise concluida!';}
+function prog(p){document.getElementById('progFill').style.width=p+'%';document.getElementById('progLabel').textContent=p<100?'A analisar PDF...':'✓ Análise concluída!';}
 function setStatus(m){document.getElementById('statusTxt').textContent=m;}
 
 // ── AI ANALYSIS ──
@@ -347,17 +496,28 @@ async function runAI(pdfText){
     try{parsed=JSON.parse(jm[0]);}
     catch(e){
       lg('JSON com caracteres especiais. A limpar...');
-      const clean=jm[0].replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/[\u2013\u2014]/g,'-').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g,'').replace(/,\s*([}\]])/g,'$1');
+      const clean=jm[0].replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g,'').replace(/,\s*([}\]])/g,'$1');
       try{parsed=JSON.parse(clean);}
       catch(e2){
-        lg('A tentar extraccao individual...');
+        lg('A tentar extracção individual...');
         const objs=[];const rx=/\{[^{}]*"ad"\s*:\s*"[^"]*"[^{}]*\}/g;let m2;
         while((m2=rx.exec(raw))!==null){try{objs.push(JSON.parse(m2[0]));}catch(e3){}}
         if(objs.length)parsed=objs;
       }
     }
   }
-  if(!parsed||!parsed.length)throw new Error('Nao foi possivel extrair alteracoes. Verifique se e um AIRAC da NAV Portugal.');
+  if(!parsed||!parsed.length)throw new Error('Não foi possível extrair alterações. Verifique se é um AIRAC da NAV Portugal.');
+
+  // Filtrar apenas FIR de Lisboa (excluir Açores e ADs estranhos)
+  parsed=parsed.filter(c=>{
+    const ad=(c.ad||'').toUpperCase();
+    if(AZORES_AD.has(ad))return false;
+    // Aceitar ENR, GEN, N/A e todos os LP** não açorianos
+    if(LISBOA_FIR.has(ad))return true;
+    if(ad.startsWith('LP'))return true; // outros LP não catalogados: manter por precaução
+    if(ad==='ENR'||ad==='GEN'||ad==='N/A'||ad==='')return true;
+    return false; // ADs de outros países (EG, LF, etc.)
+  });
 
   changes=parsed;
   changes.forEach((c,i)=>{
@@ -366,20 +526,23 @@ async function runAI(pdfText){
     if(!c.impact)c.impact='MEDIUM';
     if(!c.ad)c.ad='N/A';
     if(!c.section)c.section='';
-    if(!c.description)c.description='(sem descricao)';
+    if(!c.description)c.description='(sem descrição)';
+    // Determinar tipo de secção para filtro
+    c._secType=c.ad==='ENR'||c.section.toUpperCase().startsWith('ENR')?'ENR':
+               c.ad==='GEN'||c.section.toUpperCase().startsWith('GEN')?'GEN':'AD';
     analyses[c.id]={organs:AD_ORG[c.ad]||[],systems:guessSys(c),desc:'',eaipText:'',diffText:'',selected:true};
   });
 
-  lg('OK - '+changes.length+' alteracoes identificadas.');prog(100);
+  lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa).');prog(100);
   setTimeout(buildPanel2,500);
 }
 
 function guessSys(c){
   const s=new Set(),cats=c.categories||[];
-  if(cats.some(x=>['SID','STAR','IAP','PROC'].includes(x))){s.add('TOPSKY-ATC (COOPANS)');s.add('Base de dados de navegacao (AIRAC DB)');s.add('Cartas de procedimento');}
-  if(cats.includes('HLDG')||cats.includes('WPT')){s.add('TOPSKY-ATC (COOPANS)');s.add('Base de dados de navegacao (AIRAC DB)');}
-  if(cats.includes('FREQ')){s.add('Sistemas de comunicacao');s.add('ATIS');}
-  if(cats.includes('MSA')||cats.includes('NAV')){s.add('Radar / SSR');s.add('Base de dados de navegacao (AIRAC DB)');}
+  if(cats.some(x=>['SID','STAR','IAP','PROC'].includes(x))){s.add('TOPSKY-ATC (COOPANS)');s.add('Base de dados de navegação (AIRAC DB)');s.add('Cartas de procedimento');}
+  if(cats.includes('HLDG')||cats.includes('WPT')){s.add('TOPSKY-ATC (COOPANS)');s.add('Base de dados de navegação (AIRAC DB)');}
+  if(cats.includes('FREQ')){s.add('Sistemas de comunicação');s.add('ATIS');}
+  if(cats.includes('MSA')||cats.includes('NAV')){s.add('Radar / SSR');s.add('Base de dados de navegação (AIRAC DB)');}
   if(cats.includes('AIR')){s.add('TOPSKY-ATC (COOPANS)');s.add('FDP (Flight Data Processing)');}
   return [...s];
 }
@@ -394,26 +557,36 @@ function buildEaipUrl(ad,section){
 
 // ── PANEL 2 ──
 function buildPanel2(){
-  document.getElementById('p2info').innerHTML='<strong>'+( meta.title||'AIP Amendment')+'</strong> &nbsp;&middot;&nbsp; Efectivo: <strong>'+meta.effectiveDate+'</strong> &nbsp;&middot;&nbsp; '+changes.length+' alteracoes';
-  document.getElementById('amdtBadge').textContent='AIRAC '+meta.number;
+  document.getElementById('p2info').innerHTML='ℹ️ &nbsp;<span><strong>'+( meta.title||'AIP Amendment')+'</strong> &nbsp;·&nbsp; Efectivo: <strong>'+meta.effectiveDate+'</strong> &nbsp;·&nbsp; <strong>'+changes.length+'</strong> alterações identificadas</span>';
+  const badge=document.getElementById('amdtBadge');
+  badge.textContent='AIRAC '+meta.number;
+  badge.classList.add('loaded');
   document.getElementById('btnReset').style.display='inline-flex';
   const ads=[...new Set(changes.map(c=>c.ad))].sort();
   const fa=document.getElementById('filtAd');
   fa.innerHTML='<option value="">Todos os AD</option>';
   ads.forEach(a=>{const o=document.createElement('option');o.value=a;o.textContent=a;fa.appendChild(o);});
+
+  // Popular categorias a partir dos dados reais
+  const allCats=[...new Set(changes.flatMap(c=>c.categories||[]))].sort();
+  const fc=document.getElementById('filtCat');
+  fc.innerHTML='<option value="">Todas as categorias</option>';
+  allCats.forEach(cat=>{const o=document.createElement('option');o.value=cat;o.textContent=cat;fc.appendChild(o);});
+
   renderTable(changes);goStep(2);updBtn();
 }
 
 function renderTable(data){
   const tb=document.getElementById('tbody');tb.innerHTML='';
+  if(!data.length){tb.innerHTML='<tr><td colspan="7"><div class="empty">Nenhuma alteração encontrada.</div></td></tr>';return;}
   data.forEach(c=>{
     const a=analyses[c.id];
     const tr=document.createElement('tr');tr.dataset.id=c.id;
     const cats=(c.categories||[]).map(t=>'<span class="tag">'+t+'</span>').join('');
     tr.innerHTML='<td><input type="checkbox" class="chk rc" data-id="'+c.id+'" '+(a.selected?'checked':'')+' onchange="onChk(\''+c.id+'\',this.checked)"></td>'+
-      '<td><strong style="font-size:13px">'+c.ad+'</strong></td>'+
-      '<td style="font-size:11px;color:var(--muted)">'+( c.section||'')+'</td>'+
-      '<td style="font-size:12px">'+c.description+'</td>'+
+      '<td><strong style="font-size:13px;color:var(--nav)">'+c.ad+'</strong></td>'+
+      '<td style="font-size:11px;color:var(--muted);font-family:monospace">'+( c.section||'')+'</td>'+
+      '<td style="font-size:12px;line-height:1.5">'+c.description+'</td>'+
       '<td>'+cats+'</td>'+
       '<td><span class="imp imp-'+c.impact+'">'+iPT(c.impact)+'</span></td>'+
       '<td><button class="btn btn-secondary btn-sm" onclick="openModal(\''+c.id+'\')">Analisar</button></td>';
@@ -421,17 +594,25 @@ function renderTable(data){
   });
 }
 
-function iPT(i){return i==='HIGH'?'ALTO':i==='MEDIUM'?'MEDIO':'BAIXO';}
+function iPT(i){return i==='HIGH'?'ALTO':i==='MEDIUM'?'MÉDIO':'BAIXO';}
 function filterTable(){
   const q=document.getElementById('srch').value.toLowerCase();
   const imp=document.getElementById('filtImp').value;
   const ad=document.getElementById('filtAd').value;
-  renderTable(changes.filter(c=>(!q||(c.description.toLowerCase().includes(q)||c.ad.toLowerCase().includes(q)))&&(!imp||c.impact===imp)&&(!ad||c.ad===ad)));
+  const sec=document.getElementById('filtSec').value;
+  const cat=document.getElementById('filtCat').value;
+  renderTable(changes.filter(c=>
+    (!q||(c.description.toLowerCase().includes(q)||c.ad.toLowerCase().includes(q)))&&
+    (!imp||c.impact===imp)&&
+    (!ad||c.ad===ad)&&
+    (!sec||c._secType===sec)&&
+    (!cat||(c.categories||[]).includes(cat))
+  ));
 }
 function selAll(v){changes.forEach(c=>analyses[c.id].selected=v);document.querySelectorAll('.rc').forEach(e=>e.checked=v);document.getElementById('masterChk').checked=v;updBtn();}
 function toggleAll(v){selAll(v);}
 function onChk(id,v){analyses[id].selected=v;updBtn();}
-function updBtn(){const n=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected).length;const b=document.getElementById('btnProceed');b.disabled=n===0;b.textContent=n?'Analisar impacto ('+n+') \u2192':'Analisar impacto \u2192';}
+function updBtn(){const n=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected).length;const b=document.getElementById('btnProceed');b.disabled=n===0;b.textContent=n?'Analisar impacto ('+n+') →':'Analisar impacto →';}
 
 // ── MODAL ──
 function openModal(id){
@@ -441,12 +622,12 @@ function openModal(id){
   document.getElementById('mBadge').className='imp imp-'+c.impact;
   document.getElementById('mTitle').textContent=c.ad+' · '+c.section;
   const eUrl=buildEaipUrl(c.ad,c.section);
-  const pdfLink=eUrl?'<a href="'+eUrl+'" target="_blank" style="margin-left:8px;font-size:10px;color:var(--accentH);text-decoration:none">PDF eAIP</a>':'';
+  const pdfLink=eUrl?'<a href="'+eUrl+'" target="_blank" style="margin-left:8px;font-size:10px;color:var(--nav3);text-decoration:none;padding:2px 8px;border:1px solid rgba(0,71,171,0.35);border-radius:5px">↗ PDF eAIP</a>':'';
   const body=document.getElementById('mBody');
-  const organHtml=ORGANS.map(o=>'<div class="organ-card'+(a.organs.includes(o.id)?' sel':'')+'" onclick="togOrgan(\''+o.id+'\',this)"><div class="on">'+o.name+'</div><div class="oc">'+o.id+' &middot; '+o.code+'</div></div>').join('');
+  const organHtml=ORGANS.map(o=>'<div class="organ-card'+(a.organs.includes(o.id)?' sel':'')+'" onclick="togOrgan(\''+o.id+'\',this)"><div class="on">'+o.name+'</div><div class="oc">'+o.id+' · '+o.code+'</div></div>').join('');
   const sysHtml=SYSTEMS.map(s=>'<div class="sys-chip'+(a.systems.includes(s)?' sel':'')+'" onclick="togSys(\''+s+'\',this)">'+s+'</div>').join('');
   body.innerHTML=
-    '<div class="slbl">Alteracao (AMDT)</div>'+
+    '<div class="slbl">Alteração (AMDT)</div>'+
     '<div class="descbox">'+c.description+'</div>'+
     '<div class="slbl">eAIP actual '+pdfLink+'</div>'+
     '<div class="eaip-panel">'+
@@ -457,18 +638,18 @@ function openModal(id){
       '<div class="eaip-content dim" id="eaipRaw">A carregar eAIP...</div>'+
       '<div class="eaip-content" id="eaipDiff" style="display:none">Clique na aba para analisar com IA.</div>'+
     '</div>'+
-    '<div class="slbl">Orgaos impactados</div>'+
+    '<div class="slbl">Órgãos impactados</div>'+
     '<div class="organ-grid">'+organHtml+'</div>'+
     '<div class="slbl">Sistemas impactados</div>'+
     '<div class="sys-wrap">'+sysHtml+'</div>'+
-    '<div class="slbl">Descricao para ATOPLIS (editavel)</div>'+
-    '<div style="display:flex;gap:6px;margin-bottom:6px">'+
-      '<button class="btn btn-secondary btn-sm" id="genBtn" onclick="genDesc(\''+id+'\')">Gerar com IA</button>'+
+    '<div class="slbl">Descrição para ATOPLIS</div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:8px">'+
+      '<button class="btn btn-secondary btn-sm" id="genBtn" onclick="genDesc(\''+id+'\')">✨ Gerar com IA</button>'+
     '</div>'+
     '<textarea class="aibox" id="descBox" rows="5" placeholder="Clique em Gerar com IA ou escreva aqui...">'+a.desc+'</textarea>';
   document.getElementById('modalBg').classList.add('open');
   if(eUrl)loadEaip(id,eUrl);
-  else{document.getElementById('eaipRaw').textContent='Seccao nao mapeada para URL do eAIP.';document.getElementById('eaipRaw').classList.remove('dim');}
+  else{document.getElementById('eaipRaw').textContent='Secção não mapeada para URL do eAIP.';document.getElementById('eaipRaw').classList.remove('dim');}
 }
 
 function showTab(tab,el){
@@ -494,7 +675,7 @@ async function loadEaip(id,url){
     for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
     const txt=await pdfToText({data:bytes.buffer},20);
     eaipCache[url]=txt;a.eaipText=txt;
-    rawEl.textContent=txt.substring(0,3000)+(txt.length>3000?'\n\n[truncado - '+txt.length+' chars total]':'');
+    rawEl.textContent=txt.substring(0,3000)+(txt.length>3000?'\n\n[truncado — '+txt.length+' chars total]':'');
     rawEl.classList.remove('dim');
   }catch(e){
     rawEl.textContent='Erro ao carregar eAIP: '+e.message;
@@ -506,15 +687,15 @@ async function genDiff(id){
   const c=changes.find(x=>x.id===id),a=analyses[id];
   const diffEl=document.getElementById('eaipDiff');
   diffEl.innerHTML='<span class="spin"></span> A analisar com IA...';
-  if(!a.eaipText){diffEl.textContent='eAIP ainda nao carregou. Aguarde.';return;}
+  if(!a.eaipText){diffEl.textContent='eAIP ainda não carregou. Aguarde.';return;}
   try{
     const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:700,
-      messages:[{role:'user',content:'Es especialista ATC da NAV Portugal.\nAlteracao AIRAC '+c.amdt+': '+c.description+'\nSeccao: '+c.ad+' '+c.section+'\n\neAIP actual:\n'+a.eaipText.substring(0,5000)+'\n\nResponde em portugues:\nO QUE ESTA PUBLICADO ACTUALMENTE: [resumo do conteudo actual relevante, max 80 palavras]\n\nO QUE MUDA COM O AIRAC '+c.amdt+': [o que muda especificamente, max 80 palavras]\n\nIMPACTO NOS SISTEMAS ATC: [impacto para TOPSKY/COOPANS/AIRAC DB, max 60 palavras]'}]});
+      messages:[{role:'user',content:'És especialista ATC da NAV Portugal.\nAlteração AIRAC '+c.amdt+': '+c.description+'\nSecção: '+c.ad+' '+c.section+'\n\neAIP actual:\n'+a.eaipText.substring(0,5000)+'\n\nResponde em português:\nO QUE ESTÁ PUBLICADO ACTUALMENTE: [resumo do conteúdo actual relevante, max 80 palavras]\n\nO QUE MUDA COM O AIRAC '+c.amdt+': [o que muda especificamente, max 80 palavras]\n\nIMPACTO NOS SISTEMAS ATC: [impacto para TOPSKY/COOPANS/AIRAC DB, max 60 palavras]'}]});
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     diffEl.innerHTML=txt.split('\n\n').map(function(s){
       if(s.indexOf('ACTUALMENTE')>-1)return '<span style="color:var(--muted);display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
       if(s.indexOf('MUDA')>-1)return '<span style="color:#7ee787;display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
-      if(s.indexOf('IMPACTO')>-1)return '<span style="color:var(--accentH);display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
+      if(s.indexOf('IMPACTO')>-1)return '<span style="color:var(--nav3);display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
       return '<span style="display:block;margin-bottom:6px;white-space:pre-wrap">'+s+'</span>';
     }).join('');
     a.diffText=txt;
@@ -527,47 +708,47 @@ function togSys(name,el){const a=analyses[curId];if(a.systems.includes(name)){a.
 async function genDesc(id){
   const c=changes.find(x=>x.id===id),a=analyses[id];
   const btn=document.getElementById('genBtn');
-  btn.innerHTML='<span class="spin"></span>A gerar...';btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span> A gerar...';btn.disabled=true;
   const orgN=a.organs.map(oid=>{const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A';
   const sysN=a.systems.join(', ')||'N/A';
   const eCtx=a.eaipText?'\n\neAIP actual:\n'+a.eaipText.substring(0,3500):'';
-  const dCtx=a.diffText?'\n\nAnalise de diferencas:\n'+a.diffText:'';
+  const dCtx=a.diffText?'\n\nAnálise de diferenças:\n'+a.diffText:'';
   try{
     const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:500,
-      messages:[{role:'user',content:'Es especialista ATC da NAV Portugal. Redija em portugues (termos tecnicos em ingles) descricao de impacto para o ATOPLIS com max 150 palavras explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) accoes necessarias. Sem titulos, sem bullets.\n\nAlteracao AIRAC '+c.amdt+': '+c.description+'\nAD/Seccao: '+c.ad+' - '+c.section+' | Impacto: '+c.impact+'\nOrgaos: '+orgN+' | Sistemas: '+sysN+eCtx+dCtx}]});
+      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) acções necessárias. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+' | Impacto: '+c.impact+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+eCtx+dCtx}]});
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     document.getElementById('descBox').value=txt;a.desc=txt;
   }catch(e){alert('Erro: '+e.message);}
-  finally{btn.innerHTML='Gerar com IA';btn.disabled=false;}
+  finally{btn.innerHTML='✨ Gerar com IA';btn.disabled=false;}
 }
 
-function saveModal(){const a=analyses[curId];const b=document.getElementById('descBox');if(b)a.desc=b.value;closeModal();setStatus('Analise guardada.');}
+function saveModal(){const a=analyses[curId];const b=document.getElementById('descBox');if(b)a.desc=b.value;closeModal();setStatus('Análise guardada.');}
 function closeModal(){const a=analyses[curId];if(a){const b=document.getElementById('descBox');if(b)a.desc=b.value;}document.getElementById('modalBg').classList.remove('open');curId=null;}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 
 // ── PANEL 3 ──
 function goImpact(){
   const sel=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected);
-  document.getElementById('p3info').innerHTML='<strong>'+sel.length+' alteracoes seleccionadas</strong>. Reveja orgaos e sistemas. Clique Editar para ajustar.';
+  document.getElementById('p3info').innerHTML='ℹ️ &nbsp;<span><strong>'+sel.length+' alterações seleccionadas.</strong> Reveja órgãos e sistemas. Clique Editar para ajustar.</span>';
   const list=document.getElementById('impactList');list.innerHTML='';
   const byAd={};sel.forEach(c=>{if(!byAd[c.ad])byAd[c.ad]=[];byAd[c.ad].push(c);});
   Object.keys(byAd).sort().forEach(function(ad){
     const chgs=byAd[ad];
     const blk=document.createElement('div');
-    blk.style.cssText='background:var(--s1);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden';
-    blk.innerHTML='<div style="padding:8px 14px;background:var(--s2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px"><strong style="font-size:14px">'+ad+'</strong><span style="font-size:11px;color:var(--muted)">'+chgs.length+' item(ns)</span></div>';
+    blk.className='ad-block';
+    blk.innerHTML='<div class="ad-block-hdr"><span class="ad-code">'+ad+'</span><span class="ad-count">'+chgs.length+' item(ns)</span></div>';
     chgs.forEach(function(c){
       const a=analyses[c.id];
-      const oT=a.organs.map(oid=>'<span class="tag">'+oid+'</span>').join('')||'<span style="color:var(--muted);font-size:11px">Sem orgao</span>';
+      const oT=a.organs.map(oid=>'<span class="tag">'+oid+'</span>').join('')||'<span style="color:var(--muted);font-size:11px">Sem órgão</span>';
       const sT=a.systems.slice(0,3).map(s=>'<span class="tag">'+s+'</span>').join('')+(a.systems.length>3?'<span class="tag">+'+( a.systems.length-3)+'</span>':'');
       const row=document.createElement('div');
-      row.style.cssText='padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start';
-      row.innerHTML='<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:1px">'+iPT(c.impact)+'</span>'+
+      row.className='impact-row';
+      row.innerHTML='<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:2px">'+iPT(c.impact)+'</span>'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:12px;margin-bottom:5px">'+c.description+'</div>'+
+          '<div class="impact-desc">'+c.description+'</div>'+
           '<div style="margin-bottom:4px">'+oT+'</div>'+
           '<div>'+sT+'</div>'+
-          (a.desc?'<div style="margin-top:5px;font-size:11px;color:var(--muted);font-style:italic">'+a.desc.substring(0,100)+'...</div>':'')+
+          (a.desc?'<div class="impact-meta">'+a.desc.substring(0,110)+'...</div>':'')+
         '</div>'+
         '<button class="btn btn-secondary btn-sm" onclick="openModal(\''+c.id+'\')" style="flex-shrink:0">Editar</button>';
       blk.appendChild(row);
@@ -588,38 +769,37 @@ function buildEmails(){
   let any=false;
   ORGANS.forEach(function(org){
     const items=byOrg[org.id];if(!items.length)return;any=true;
-    const subj='AIRAC '+meta.number+' - Impacto em sistemas ATC - '+org.name+' ('+org.code+')';
-    let bodyLines='Caro(a) responsavel,\n\nNo ambito do AIRAC '+meta.number+' (efectivo '+meta.effectiveDate+'), foram identificadas as seguintes alteracoes com impacto nos sistemas ATC sob responsabilidade de '+org.name+' ('+org.code+'):\n\n';
+    const subj='AIRAC '+meta.number+' — Impacto em sistemas ATC — '+org.name+' ('+org.code+')';
+    let bodyLines='Caro(a) responsável,\n\nNo âmbito do AIRAC '+meta.number+' (efectivo '+meta.effectiveDate+'), foram identificadas as seguintes alterações com impacto nos sistemas ATC sob responsabilidade de '+org.name+' ('+org.code+'):\n\n';
     bodyLines+=items.map(function(c,i){
       const a=analyses[c.id];
-      return (i+1)+'. ['+c.ad+' | '+c.section+'] - Impacto: '+iPT(c.impact)+'\n'+c.description+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnalise: '+(a.desc||'(pendente)');
+      return (i+1)+'. ['+c.ad+' | '+c.section+'] — Impacto: '+iPT(c.impact)+'\n'+c.description+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
     }).join('\n\n---\n\n');
-    bodyLines+='\n\nAgradecia confirmacao do impacto e indicacao das accoes a realizar.\n\nCom os melhores cumprimentos,\nGOPLIS/DOPLIS - NAV Portugal';
+    bodyLines+='\n\nAgradecia confirmação do impacto e indicação das acções a realizar.\n\nCom os melhores cumprimentos,\nGOPLIS/DOPLIS — NAV Portugal';
     const card=document.createElement('div');card.className='ecard';
     card.innerHTML=
       '<div class="ecard-hdr" onclick="this.nextElementSibling.classList.toggle(\'open\')">'+
-        '<span style="font-size:16px">&#128231;</span>'+
-        '<span style="font-weight:600;font-size:13px">'+org.name+' - '+org.id+'</span>'+
-        '<span style="margin-left:auto;font-size:11px;color:var(--muted)">'+items.length+' item(ns)</span>'+
-        '<span style="font-size:11px;color:var(--muted);margin-left:8px">&#9660;</span>'+
+        '<div class="ecard-hdr-icon">✉</div>'+
+        '<div><div class="ecard-name">'+org.name+'</div><div class="ecard-sub">'+org.id+' · '+org.code+' · '+items.length+' item(ns)</div></div>'+
+        '<span style="margin-left:auto;font-size:11px;color:var(--muted)">▾</span>'+
       '</div>'+
       '<div class="ecard-body">'+
         '<div class="ef"><label>Para</label><input type="text" value="'+org.email+'" id="eto_'+org.id+'"></div>'+
         '<div class="ef"><label>Assunto</label><input type="text" value="'+subj+'" id="esubj_'+org.id+'"></div>'+
-        '<div class="ef"><label>Corpo do email (editavel)</label><textarea id="ebody_'+org.id+'">'+bodyLines+'</textarea></div>'+
-        '<div style="display:flex;gap:6px;justify-content:flex-end">'+
-          '<button class="btn btn-secondary btn-sm" onclick="copyEmail(\''+org.id+'\')">Copiar</button>'+
-          '<button class="btn btn-primary btn-sm" onclick="openMail(\''+org.id+'\')">Abrir no Outlook</button>'+
+        '<div class="ef"><label>Corpo do email (editável)</label><textarea id="ebody_'+org.id+'">'+bodyLines+'</textarea></div>'+
+        '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+          '<button class="btn btn-secondary btn-sm" onclick="copyEmail(\''+org.id+'\')">📋 Copiar</button>'+
+          '<button class="btn btn-primary btn-sm" onclick="openMail(\''+org.id+'\')">↗ Abrir no Outlook</button>'+
         '</div>'+
       '</div>';
     container.appendChild(card);
   });
-  if(!any)container.innerHTML='<div class="empty">Nenhum orgao associado. Volte ao passo 3 e edite os itens.</div>';
+  if(!any)container.innerHTML='<div class="empty">Nenhum órgão associado. Volte ao passo 3 e edite os itens.</div>';
 }
 
 function copyEmail(id){
   const s=document.getElementById('esubj_'+id);const b=document.getElementById('ebody_'+id);
-  if(s&&b)navigator.clipboard&&navigator.clipboard.writeText('Assunto: '+s.value+'\n\n'+b.value).then(function(){setStatus('Email copiado.');});
+  if(s&&b)navigator.clipboard&&navigator.clipboard.writeText('Assunto: '+s.value+'\n\n'+b.value).then(function(){setStatus('Email copiado para a área de transferência.');});
 }
 function openMail(id){
   const t=encodeURIComponent((document.getElementById('eto_'+id)||{}).value||'');
@@ -631,31 +811,31 @@ function openMail(id){
 function buildPDF(){
   const sel=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected);
   const L=[];
-  L.push('NOTA TECNICA - AIRAC '+meta.number);
+  L.push('NOTA TÉCNICA — AIRAC '+meta.number);
   L.push('Data efectiva: '+meta.effectiveDate);
   L.push('Para: ATOPLIS / DOPLIS');
-  L.push('De: GOPLIS - NAV Portugal');
-  L.push('Assunto: Impacto nos sistemas ATC - '+(meta.title||'AIP Amendment AIRAC '+meta.number));
-  L.push('Data de emissao: '+new Date().toLocaleDateString('pt-PT'));
+  L.push('De: GOPLIS — NAV Portugal');
+  L.push('Assunto: Impacto nos sistemas ATC — '+(meta.title||'AIP Amendment AIRAC '+meta.number));
+  L.push('Data de emissão: '+new Date().toLocaleDateString('pt-PT'));
   L.push('');L.push('='.repeat(65));L.push('');
-  L.push('O presente documento lista as alteracoes do AIRAC '+meta.number+' com impacto nos sistemas ATC, para accao do ATOPLIS.');
+  L.push('O presente documento lista as alterações do AIRAC '+meta.number+' com impacto nos sistemas ATC, para acção do ATOPLIS.');
   L.push('');
   ['HIGH','MEDIUM','LOW'].forEach(function(imp){
     const g=sel.filter(c=>c.impact===imp);if(!g.length)return;
-    L.push('-'.repeat(65));L.push('IMPACTO '+iPT(imp)+' - '+g.length+' item(ns)');L.push('-'.repeat(65));L.push('');
+    L.push('-'.repeat(65));L.push('IMPACTO '+iPT(imp)+' — '+g.length+' item(ns)');L.push('-'.repeat(65));L.push('');
     g.forEach(function(c,i){
       const a=analyses[c.id];
       L.push((i+1)+'. '+c.ad+' | '+c.section);
-      L.push('   Alteracao: '+c.description);
+      L.push('   Alteração: '+c.description);
       L.push('   Categorias: '+(c.categories||[]).join(', '));
-      L.push('   Orgaos: '+a.organs.map(function(oid){const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A');
+      L.push('   Órgãos: '+a.organs.map(function(oid){const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A');
       L.push('   Sistemas: '+a.systems.join(', ')||'N/A');
-      if(a.desc&&a.desc.length>5){L.push('');L.push('   Analise de impacto:');L.push('   '+a.desc.replace(/\n/g,'\n   '));}
+      if(a.desc&&a.desc.length>5){L.push('');L.push('   Análise de impacto:');L.push('   '+a.desc.replace(/\n/g,'\n   '));}
       L.push('');
     });
   });
   L.push('='.repeat(65));
-  L.push('Gerado por AIRAC Impact Tool - GOPLIS/DOPLIS - NAV Portugal - '+new Date().toLocaleDateString('pt-PT'));
+  L.push('Gerado por AIRAC Impact Tool — GOPLIS/DOPLIS — NAV Portugal — '+new Date().toLocaleDateString('pt-PT'));
   document.getElementById('pdfContent').value=L.join('\n');
 }
 
@@ -665,7 +845,7 @@ function genPDF(){
   const w=window.open('','_blank');
   const safe=c.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+t+'</title><style>body{font-family:Courier New,monospace;font-size:10.5px;line-height:1.65;padding:18mm;color:#000;background:#fff}pre{white-space:pre-wrap;word-wrap:break-word}@media print{@page{margin:18mm}body{padding:0}}</style></head><body><pre>'+safe+'</pre><script>window.onload=function(){window.print();}<\/script></body></html>');
-  w.document.close();setStatus('PDF aberto para impressao.');
+  w.document.close();setStatus('PDF aberto para impressão.');
 }
 
 function goStep(n){
@@ -683,7 +863,9 @@ function resetAll(){
   document.getElementById('fi').value='';
   document.getElementById('progWrap').style.display='none';
   document.getElementById('progLog').textContent='';
-  document.getElementById('amdtBadge').textContent='Nenhum AIRAC carregado';
+  const badge=document.getElementById('amdtBadge');
+  badge.textContent='Nenhum AIRAC carregado';
+  badge.classList.remove('loaded');
   document.getElementById('btnReset').style.display='none';
   goStep(1);setStatus('Pronto.');
 }
