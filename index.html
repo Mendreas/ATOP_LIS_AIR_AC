@@ -466,9 +466,9 @@ function doFile(f){
   lg('A ler: '+f.name);prog(10);
   (async()=>{
     try{
-      lg('A extrair texto do PDF (primeiras 8 páginas)...');prog(20);
-      const txt=await pdfToText({data:await f.arrayBuffer()},8);
-      lg('Texto extraído ('+txt.length+' chars). A enviar para análise...');prog(35);
+      lg('A extrair texto completo do PDF...');prog(20);
+      const txt=await pdfToText({data:await f.arrayBuffer()},9999);
+      lg('Texto extraído ('+txt.length+' chars / ~'+Math.round(txt.length/4)+' tokens). A enviar para análise...');prog(35);
       await runAI(txt);
     }catch(e){lg('ERRO: '+e.message);setStatus('Erro: '+e.message);}
   })();
@@ -548,19 +548,11 @@ function guessSys(c){
 }
 
 function buildEaipUrl(ad,section){
-  const adU=(ad||'').toUpperCase();
-  // GEN section — e.g. section "2.4" -> LP_GEN_2_4_en.pdf
-  if(adU==='GEN'){
-    const m=section.match(/(\d+)\.(\d+)/);
-    return m?EAIP+'LP_GEN_'+m[1]+'_'+m[2]+'_en.pdf':EAIP+'LP_GEN_0_2_en.pdf';
-  }
-  // ENR section — e.g. section "ENR 1.6" or "1.6" -> LP_ENR_1_6_en.pdf
-  if(!ad||adU==='ENR'||adU==='N/A'){
+  if(!ad||ad==='ENR'||ad==='N/A'){
     const m=section.match(/ENR\s*(\d+)\.(\d+)/i)||section.match(/(\d+)\.(\d+)/);
     return m?EAIP+'LP_ENR_'+m[1]+'_'+m[2]+'_en.pdf':null;
   }
-  // AD section
-  return EAIP+'LP_AD_2_'+adU+'_en.pdf';
+  return EAIP+'LP_AD_2_'+ad.toUpperCase()+'_en.pdf';
 }
 
 // ── PANEL 2 ──
