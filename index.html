@@ -480,7 +480,7 @@ function setStatus(m){document.getElementById('statusTxt').textContent=m;}
 // ── AI ANALYSIS ──
 async function runAI(pdfText){
   lg('A contactar API...');prog(40);
-  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract ALL changes from sections 1 and 2.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas. Escape internal quotes with backslash.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"LPPT","section":"2.22","description":"description","impact":"HIGH","categories":["SID"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new/changed SID/STAR/IAP/HLDG/WPT/airspace. MEDIUM=corrections to existing. LOW=admin/chart/obstacles.\ncategories: SID STAR IAP HLDG WPT PROC AIR NAV FREQ MSA GEN\nad: ICAO code or ENR.\n\nDOCUMENT:\n'+pdfText;
+  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GEN"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new/changed SID/STAR/IAP/HLDG/WPT/airspace/new facility/new heliport. MEDIUM=corrections to procedures or operational data. LOW=admin/chart-only/contacts/formatting.\ncategories: SID STAR IAP HLDG WPT PROC AIR NAV FREQ MSA GEN HLP\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
 
   const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:4000,messages:[{role:'user',content:prompt}]});
   lg('Resposta recebida. A processar...');prog(70);
@@ -530,7 +530,10 @@ async function runAI(pdfText){
     // Determinar tipo de secção para filtro
     c._secType=c.ad==='ENR'||c.section.toUpperCase().startsWith('ENR')?'ENR':
                c.ad==='GEN'||c.section.toUpperCase().startsWith('GEN')?'GEN':'AD';
-    analyses[c.id]={organs:AD_ORG[c.ad]||[],systems:guessSys(c),desc:'',eaipText:'',diffText:'',selected:true};
+    const _adFir=(c.ad||'').toUpperCase();
+    const _firSet=new Set(['LPPT','LPPR','LPCS','LPFR','LPMA','LPPS','LPPC','LPPO','ENR','GEN','CCLIS']);
+    const _isFir=_firSet.has(_adFir)||_adFir.startsWith('LPPT')||_adFir.startsWith('LPPR')||_adFir.startsWith('LPCS')||_adFir.startsWith('LPFR')||_adFir.startsWith('LPMA')||_adFir.startsWith('LPPS');
+    analyses[c.id]={organs:AD_ORG[c.ad]||[],systems:guessSys(c),desc:'',eaipText:'',diffText:'',selected:_isFir};
   });
 
   lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa).');prog(100);
@@ -548,11 +551,17 @@ function guessSys(c){
 }
 
 function buildEaipUrl(ad,section){
-  if(!ad||ad==='ENR'||ad==='N/A'){
-    const m=section.match(/ENR\s*(\d+)\.(\d+)/i)||section.match(/(\d+)\.(\d+)/);
+  const adU=(ad||'').toUpperCase().trim();
+  const secU=(section||'').trim();
+  if(adU==='GEN'||adU.startsWith('GEN')){
+    const m=secU.match(/(\d+)\.(\d+)/);
+    return m?EAIP+'LP_GEN_'+m[1]+'_'+m[2]+'_en.pdf':EAIP+'LP_GEN_0_2_en.pdf';
+  }
+  if(!ad||adU==='ENR'||adU==='N/A'){
+    const m=secU.match(/ENR\s*(\d+)\.(\d+)/i)||secU.match(/(\d+)\.(\d+)/);
     return m?EAIP+'LP_ENR_'+m[1]+'_'+m[2]+'_en.pdf':null;
   }
-  return EAIP+'LP_AD_2_'+ad.toUpperCase()+'_en.pdf';
+  return EAIP+'LP_AD_2_'+adU+'_en.pdf';
 }
 
 // ── PANEL 2 ──
