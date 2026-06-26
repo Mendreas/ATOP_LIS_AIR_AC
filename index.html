@@ -296,6 +296,9 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
     <select id="filtCat" onchange="filterTable()">
       <option value="">Todas as categorias</option>
     </select>
+    <select id="filtSys" onchange="filterTable()">
+      <option value="">Todos os sistemas</option>
+    </select>
     <select id="filtImp" onchange="filterTable()">
       <option value="">Todos os impactos</option>
       <option value="HIGH">Alto</option>
@@ -314,7 +317,8 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
       <thead>
         <tr>
           <th style="width:36px"><input type="checkbox" class="chk" id="masterChk" onchange="toggleAll(this.checked)"></th>
-          <th style="width:70px">AD</th>
+          <th style="width:55px">Parte</th>
+          <th style="width:70px">A/D</th>
           <th style="width:95px">Secção</th>
           <th>Descrição</th>
           <th style="width:150px">Categorias</th>
@@ -393,7 +397,44 @@ const ORGANS=[
   {id:'TWRFUN',code:'LPMA',name:'TWR Funchal', email:'twrfun@nav.pt'},
   {id:'TWRSAN',code:'LPPS',name:'TWR Porto Santo',email:'twrsan@nav.pt'}
 ];
-const SYSTEMS=['TOPSKY-ATC (COOPANS)','Strips electrónicas','ATIS','Radar / SSR','Sistemas de comunicação','Cartas de procedimento','Base de dados de navegação (AIRAC DB)','FDP (Flight Data Processing)'];
+const SYSTEMS_DEF=[
+  {id:'TOPSKY',name:'TOPSKY-ATC (COOPANS)',vendor:'Thales',
+   organs:['TWRLIS','CCLIS','TWRPOR','TWRCAS','TWRFAR','TWRFUN','TWRSAN'],shared:true,
+   cats:['SID','STAR','IAP','HLDG','WPT','NAV','RWY','FREQ','AWY','MSA','HLP'],
+   secs:['AD','ENR','GEN'],adScoped:false,
+   files:{SID:['ROUTES','SID_ALLOCATION','CHARACTERISTIC_POINTS'],
+     STAR:['ROUTES','STAR_ALLOCATION','CHARACTERISTIC_POINTS'],
+     IAP:['ROUTES','CHARACTERISTIC_POINTS'],
+     HLDG:['ODS_HOLDING','CHARACTERISTIC_POINTS'],
+     WPT:['CHARACTERISTIC_POINTS'],
+     NAV:['CHARACTERISTIC_POINTS'],
+     RWY:['AIRPORT_RUNWAY'],
+     AWY:['ROUTES','AIRWAY_CONNECTION','CHARACTERISTIC_POINTS'],
+     FREQ:['AIRPORT_RUNWAY'],
+     MSA:['ROUTES'],
+     HLP:['CHARACTERISTIC_POINTS','AIRPORT_RUNWAY']}},
+  {id:'GEC',name:'GEC',vendor:'NAV Portugal',
+   organs:['CCLIS'],shared:false,
+   cats:['STAR','HLDG','FREQ','SID'],secs:['AD','ENR'],adScoped:false,
+   files:{STAR:['BD Estática (offline)'],HLDG:['BD Estática (offline)'],
+     FREQ:['BD Estática (offline)'],SID:['BD Estática (offline)']}},
+  {id:'TWRATM',name:'TWRATM',vendor:'NAV Portugal',
+   organs:['TWRPOR','TWRCAS','TWRFAR','TWRFUN','TWRSAN'],shared:false,
+   cats:['SID','STAR','WPT','NAV','AWY'],secs:['AD','ENR'],adScoped:true},
+  {id:'EFS',name:'EFS',vendor:'NAV Portugal',
+   organs:['TWRLIS'],shared:false,
+   cats:['SID'],kw:['layout','taxiway','twy','stand','apron'],
+   secs:['AD'],adScoped:true,onlyADs:['LPPT']},
+  {id:'RUNWAY_MGR',name:'Runway Manager',vendor:'NAV Portugal',
+   organs:['TWRLIS','CCLIS'],shared:false,
+   cats:['RWY'],kw:['designador','numeração de stand','stand number','threshold'],
+   secs:['AD'],adScoped:true},
+  {id:'ASMGCS',name:'ASMGCS',vendor:'External',
+   organs:['TWRLIS','TWRPOR','TWRFAR'],shared:false,
+   cats:['RWY'],kw:['taxiway','twy','apron','aerodrome layout','layout aeródromo'],
+   secs:['AD'],adScoped:true}
+];
+const SYSTEMS=SYSTEMS_DEF.map(s=>s.name);
 const AD_ORG={'LPPT':['TWRLIS','CCLIS'],'LPPR':['TWRPOR'],'LPCS':['TWRCAS'],'LPFR':['TWRFAR'],'LPMA':['TWRFUN'],'LPPS':['TWRSAN'],'ENR':['CCLIS'],'LPPO':['CCLIS']};
 const EAIP='https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/pdf/';
 
@@ -480,7 +521,7 @@ function setStatus(m){document.getElementById('statusTxt').textContent=m;}
 // ── AI ANALYSIS ──
 async function runAI(pdfText){
   lg('A contactar API...');prog(40);
-  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GEN"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new/changed SID/STAR/IAP/HLDG/WPT/airspace/new facility/new heliport. MEDIUM=corrections to procedures or operational data. LOW=admin/chart-only/contacts/formatting.\ncategories: SID STAR IAP HLDG WPT PROC AIR NAV FREQ MSA GEN HLP\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
+  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
 
   const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:4000,messages:[{role:'user',content:prompt}]});
   lg('Resposta recebida. A processar...');prog(70);
@@ -519,6 +560,15 @@ async function runAI(pdfText){
     return false; // ADs de outros países (EG, LF, etc.)
   });
 
+  // Normalizar categorias
+  parsed.forEach(c=>{
+    if(c.categories)c.categories=c.categories.map(cat=>{
+      if(cat==='GEN')return 'GER';
+      if(cat==='AIR')return 'AWY';
+      return cat;
+    });
+  });
+
   changes=parsed;
   changes.forEach((c,i)=>{
     c.id=String(i+1);
@@ -533,22 +583,44 @@ async function runAI(pdfText){
     const _adFir=(c.ad||'').toUpperCase();
     const _firSet=new Set(['LPPT','LPPR','LPCS','LPFR','LPMA','LPPS','LPPC','LPPO','ENR','GEN','CCLIS']);
     const _isFir=_firSet.has(_adFir)||_adFir.startsWith('LPPT')||_adFir.startsWith('LPPR')||_adFir.startsWith('LPCS')||_adFir.startsWith('LPFR')||_adFir.startsWith('LPMA')||_adFir.startsWith('LPPS');
-    analyses[c.id]={organs:AD_ORG[c.ad]||[],systems:guessSys(c),desc:'',eaipText:'',diffText:'',selected:_isFir};
+    const _sd=guessSystems(c);
+    const _allOrg=[...new Set(_sd.flatMap(s=>s.organs))];
+    analyses[c.id]={organs:_allOrg.length?_allOrg:(AD_ORG[c.ad]||[]),
+      systems:_sd.map(s=>s.name),systemsDetail:_sd,
+      desc:'',eaipText:'',diffText:'',selected:_isFir};
   });
 
   lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa).');prog(100);
   setTimeout(buildPanel2,500);
 }
 
-function guessSys(c){
-  const s=new Set(),cats=c.categories||[];
-  if(cats.some(x=>['SID','STAR','IAP','PROC'].includes(x))){s.add('TOPSKY-ATC (COOPANS)');s.add('Base de dados de navegação (AIRAC DB)');s.add('Cartas de procedimento');}
-  if(cats.includes('HLDG')||cats.includes('WPT')){s.add('TOPSKY-ATC (COOPANS)');s.add('Base de dados de navegação (AIRAC DB)');}
-  if(cats.includes('FREQ')){s.add('Sistemas de comunicação');s.add('ATIS');}
-  if(cats.includes('MSA')||cats.includes('NAV')){s.add('Radar / SSR');s.add('Base de dados de navegação (AIRAC DB)');}
-  if(cats.includes('AIR')){s.add('TOPSKY-ATC (COOPANS)');s.add('FDP (Flight Data Processing)');}
-  return [...s];
+function guessSystems(c){
+  const cats=c.categories||[],desc=(c.description||'').toLowerCase(),
+        ad=(c.ad||'').toUpperCase(),st=c._secType||'AD';
+  const result=[];
+  SYSTEMS_DEF.forEach(sys=>{
+    const catHit=sys.cats.some(tc=>cats.includes(tc));
+    const kwHit=sys.kw&&sys.kw.some(kw=>desc.includes(kw));
+    if(!catHit&&!kwHit)return;
+    if(sys.secs&&!sys.secs.includes(st))return;
+    if(sys.onlyADs&&!sys.onlyADs.includes(ad))return;
+    let organs=[...sys.organs];
+    if(sys.adScoped&&st!=='ENR'){
+      const adO=AD_ORG[ad]||[];
+      organs=organs.filter(o=>adO.includes(o));
+      if(!organs.length)return;
+    }
+    const seen=new Set(),files=[];
+    if(sys.files){
+      cats.filter(tc=>sys.files[tc]).forEach(tc=>
+        sys.files[tc].forEach(f=>{if(!seen.has(f)){seen.add(f);files.push(f);}})
+      );
+    }
+    result.push({sysId:sys.id,name:sys.name,organs,files});
+  });
+  return result;
 }
+function guessSys(c){return guessSystems(c).map(s=>s.name);}
 
 function buildEaipUrl(ad,section){
   const adU=(ad||'').toUpperCase().trim();
@@ -582,18 +654,25 @@ function buildPanel2(){
   fc.innerHTML='<option value="">Todas as categorias</option>';
   allCats.forEach(cat=>{const o=document.createElement('option');o.value=cat;o.textContent=cat;fc.appendChild(o);});
 
+  // Popular sistemas a partir dos dados reais
+  const allSys=[...new Set(Object.values(analyses).flatMap(a=>a.systems||[]))].sort();
+  const fs=document.getElementById('filtSys');
+  fs.innerHTML='<option value="">Todos os sistemas</option>';
+  allSys.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;fs.appendChild(o);});
+
   renderTable(changes);goStep(2);updBtn();
 }
 
 function renderTable(data){
   const tb=document.getElementById('tbody');tb.innerHTML='';
-  if(!data.length){tb.innerHTML='<tr><td colspan="7"><div class="empty">Nenhuma alteração encontrada.</div></td></tr>';return;}
+  if(!data.length){tb.innerHTML='<tr><td colspan="8"><div class="empty">Nenhuma alteração encontrada.</div></td></tr>';return;}
   data.forEach(c=>{
     const a=analyses[c.id];
     const tr=document.createElement('tr');tr.dataset.id=c.id;
     const cats=(c.categories||[]).map(t=>'<span class="tag">'+t+'</span>').join('');
     tr.innerHTML='<td><input type="checkbox" class="chk rc" data-id="'+c.id+'" '+(a.selected?'checked':'')+' onchange="onChk(\''+c.id+'\',this.checked)"></td>'+
-      '<td><strong style="font-size:13px;color:var(--nav)">'+c.ad+'</strong></td>'+
+      '<td><strong style="font-size:11px;font-weight:700;color:var(--nav)">'+c._secType+'</strong></td>'+
+      '<td><strong style="font-size:13px;color:var(--nav)">'+(c._secType==='AD'?c.ad:'')+'</strong></td>'+
       '<td style="font-size:11px;color:var(--muted);font-family:monospace">'+( c.section||'')+'</td>'+
       '<td style="font-size:12px;line-height:1.5">'+c.description+'</td>'+
       '<td>'+cats+'</td>'+
@@ -610,12 +689,14 @@ function filterTable(){
   const ad=document.getElementById('filtAd').value;
   const sec=document.getElementById('filtSec').value;
   const cat=document.getElementById('filtCat').value;
+  const sys=document.getElementById('filtSys').value;
   renderTable(changes.filter(c=>
     (!q||(c.description.toLowerCase().includes(q)||c.ad.toLowerCase().includes(q)))&&
     (!imp||c.impact===imp)&&
     (!ad||c.ad===ad)&&
     (!sec||c._secType===sec)&&
-    (!cat||(c.categories||[]).includes(cat))
+    (!cat||(c.categories||[]).includes(cat))&&
+    (!sys||(analyses[c.id]&&analyses[c.id].systems.includes(sys)))
   ));
 }
 function selAll(v){changes.forEach(c=>analyses[c.id].selected=v);document.querySelectorAll('.rc').forEach(e=>e.checked=v);document.getElementById('masterChk').checked=v;updBtn();}
@@ -629,12 +710,12 @@ function openModal(id){
   const c=changes.find(x=>x.id===id),a=analyses[id];
   document.getElementById('mBadge').textContent=iPT(c.impact);
   document.getElementById('mBadge').className='imp imp-'+c.impact;
-  document.getElementById('mTitle').textContent=c.ad+' · '+c.section;
+  document.getElementById('mTitle').textContent=c._secType+(c._secType==='AD'?' · '+c.ad:'')+' · '+c.section;
   const eUrl=buildEaipUrl(c.ad,c.section);
   const pdfLink=eUrl?'<a href="'+eUrl+'" target="_blank" style="margin-left:8px;font-size:10px;color:var(--nav3);text-decoration:none;padding:2px 8px;border:1px solid rgba(0,71,171,0.35);border-radius:5px">↗ PDF eAIP</a>':'';
   const body=document.getElementById('mBody');
   const organHtml=ORGANS.map(o=>'<div class="organ-card'+(a.organs.includes(o.id)?' sel':'')+'" onclick="togOrgan(\''+o.id+'\',this)"><div class="on">'+o.name+'</div><div class="oc">'+o.id+' · '+o.code+'</div></div>').join('');
-  const sysHtml=SYSTEMS.map(s=>'<div class="sys-chip'+(a.systems.includes(s)?' sel':'')+'" onclick="togSys(\''+s+'\',this)">'+s+'</div>').join('');
+  const sysHtml=buildSysCards(a);
   body.innerHTML=
     '<div class="slbl">Alteração (AMDT)</div>'+
     '<div class="descbox">'+c.description+'</div>'+
@@ -703,7 +784,7 @@ async function genDiff(id){
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     diffEl.innerHTML=txt.split('\n\n').map(function(s){
       if(s.indexOf('ACTUALMENTE')>-1)return '<span style="color:var(--muted);display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
-      if(s.indexOf('MUDA')>-1)return '<span style="color:#7ee787;display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
+      if(s.indexOf('MUDA')>-1)return '<span style="color:#0a5c2e;display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
       if(s.indexOf('IMPACTO')>-1)return '<span style="color:var(--nav3);display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
       return '<span style="display:block;margin-bottom:6px;white-space:pre-wrap">'+s+'</span>';
     }).join('');
@@ -714,17 +795,55 @@ async function genDiff(id){
 function togOrgan(id,el){const a=analyses[curId];if(a.organs.includes(id)){a.organs=a.organs.filter(x=>x!==id);el.classList.remove('sel');}else{a.organs.push(id);el.classList.add('sel');}}
 function togSys(name,el){const a=analyses[curId];if(a.systems.includes(name)){a.systems=a.systems.filter(x=>x!==name);el.classList.remove('sel');}else{a.systems.push(name);el.classList.add('sel');}}
 
+function buildSysCards(a){
+  if(!a.systemsDetail||!a.systemsDetail.length){
+    return '<em style="color:var(--muted);font-size:11px">Sem perfil de sistemas.</em>';
+  }
+  return a.systemsDetail.map(s=>{
+    const sel=a.systems.includes(s.name);
+    const orgT=s.organs.map(oid=>{
+      const o=ORGANS.find(x=>x.id===oid);
+      return o?'<span class="tag">'+o.name+'</span>':'';
+    }).join('');
+    const filT=(s.files||[]).map(f=>
+      '<span class="tag" style="background:#f0f8ff;color:#1e40af;border-color:#bfdbfe;font-size:9px">'+f+'</span>'
+    ).join('');
+    return '<div data-name="'+s.name+'" onclick="togSysCard(this)" style="background:'+(sel?'#fdf0ec':'#fff')+
+      ';border:1.5px solid '+(sel?'var(--nav2)':'var(--border)')+
+      ';border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:all .2s">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+        '<div class="syscard-dot" style="width:10px;height:10px;border-radius:50%;background:'+(sel?'var(--nav2)':'#ccc')+';flex-shrink:0"></div>'+
+        '<strong style="font-size:12px;color:var(--nav)">'+s.name+'</strong>'+
+      '</div>'+
+      (orgT?'<div style="margin-bottom:4px">'+orgT+'</div>':'')+
+      (filT?'<div><span style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Ficheiros: </span>'+filT+'</div>':'')+
+    '</div>';
+  }).join('');
+}
+function togSysCard(el){
+  const name=el.getAttribute('data-name');
+  const a=analyses[curId];if(!a)return;
+  const sel=a.systems.includes(name);
+  if(sel)a.systems=a.systems.filter(x=>x!==name);else a.systems.push(name);
+  el.style.background=sel?'#fff':'#fdf0ec';
+  el.style.borderColor=sel?'var(--border)':'var(--nav2)';
+  const dot=el.querySelector('.syscard-dot');
+  if(dot)dot.style.background=sel?'#ccc':'var(--nav2)';
+}
+
 async function genDesc(id){
   const c=changes.find(x=>x.id===id),a=analyses[id];
   const btn=document.getElementById('genBtn');
   btn.innerHTML='<span class="spin"></span> A gerar...';btn.disabled=true;
   const orgN=a.organs.map(oid=>{const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A';
   const sysN=a.systems.join(', ')||'N/A';
+  const _tsD=a.systemsDetail?a.systemsDetail.find(s=>s.sysId==='TOPSKY'):null;
+  const tsFiles=_tsD&&_tsD.files&&_tsD.files.length?'\nTOPSKY ficheiros a actualizar: '+_tsD.files.join(', '):'';
   const eCtx=a.eaipText?'\n\neAIP actual:\n'+a.eaipText.substring(0,3500):'';
   const dCtx=a.diffText?'\n\nAnálise de diferenças:\n'+a.diffText:'';
   try{
     const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:500,
-      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) acções necessárias. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+' | Impacto: '+c.impact+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+eCtx+dCtx}]});
+      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) acções necessárias. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+' | Impacto: '+c.impact+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+tsFiles+eCtx+dCtx}]});
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     document.getElementById('descBox').value=txt;a.desc=txt;
   }catch(e){alert('Erro: '+e.message);}
@@ -839,6 +958,10 @@ function buildPDF(){
       L.push('   Categorias: '+(c.categories||[]).join(', '));
       L.push('   Órgãos: '+a.organs.map(function(oid){const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A');
       L.push('   Sistemas: '+a.systems.join(', ')||'N/A');
+      if(a.systemsDetail){
+        const _ts=a.systemsDetail.find(s=>s.sysId==='TOPSKY');
+        if(_ts&&_ts.files&&_ts.files.length)L.push('   TOPSKY ficheiros: '+_ts.files.join(', '));
+      }
       if(a.desc&&a.desc.length>5){L.push('');L.push('   Análise de impacto:');L.push('   '+a.desc.replace(/\n/g,'\n   '));}
       L.push('');
     });
