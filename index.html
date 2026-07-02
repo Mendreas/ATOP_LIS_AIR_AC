@@ -238,6 +238,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
     <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.3</p>
   </div>
   <div class="header-right">
+    <button onclick="openHelp()" style="padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600;transition:all .2s" onmouseover="this.style.background='rgba(212,165,165,0.3)'" onmouseout="this.style.background='rgba(212,165,165,0.15)'">? Ajuda</button>
     <div class="hbadge" id="amdtBadge">Nenhum AIRAC carregado</div>
     <button id="btnReset" class="btn btn-danger btn-sm" onclick="resetAll()">✕ Limpar</button>
   </div>
@@ -309,6 +310,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
     <div style="margin-left:auto;display:flex;gap:8px">
       <button class="btn btn-secondary btn-sm" onclick="selAll(true)">Sel. todos</button>
       <button class="btn btn-secondary btn-sm" onclick="selAll(false)">Limpar sel.</button>
+      <button class="btn btn-secondary btn-sm" onclick="restoreInitialSel()" title="Repõe a selecção feita na primeira análise de impacto">↺ Selecção inicial</button>
       <button class="btn btn-primary btn-sm" id="btnProceed" onclick="goImpact()" disabled>Analisar impacto →</button>
     </div>
   </div>
@@ -371,6 +373,19 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
     <div class="modal-foot">
       <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
       <button class="btn btn-primary" onclick="saveModal()">Guardar análise</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="helpBg" onclick="if(event.target===this)closeHelp()">
+  <div class="modal" style="max-width:780px">
+    <div class="modal-hdr">
+      <h3>❓ Ajuda — AIRAC Impact Tool</h3>
+      <button class="modal-close" onclick="closeHelp()">✕</button>
+    </div>
+    <div class="modal-body" id="helpBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeHelp()">Fechar</button>
     </div>
   </div>
 </div>
@@ -521,9 +536,9 @@ function setStatus(m){document.getElementById('statusTxt').textContent=m;}
 // ── AI ANALYSIS ──
 async function runAI(pdfText){
   lg('A contactar API...');prog(40);
-  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
+  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nGRANULARITY RULES (critical — follow EXACTLY the same way every time):\n1. Create EXACTLY ONE item per changed subject per AIP section.\n2. NEVER merge two different navaids, waypoints, procedures or subjects into one item (e.g. LAR withdrawal and SGR withdrawal = 2 SEPARATE items, even if in the same section).\n3. NEVER merge changes from different sections into one item (e.g. ENR 6.01-5 and ENR 6.02-9 = 2 SEPARATE items).\n4. Each updated chart is its own item, with its own chart section number.\n5. Descriptions: factual, max 20 words, ALWAYS naming the specific identifier (navaid ID, waypoint name, chart number, ICAO code).\n6. PARTIAL vs TOTAL withdrawal: if a navaid facility is only PARTIALLY withdrawn (e.g. the VOR element removed but the DME retained), the description MUST state both what is withdrawn AND what remains (e.g. \"SGR VOR withdrawn; DME retained - record becomes DME-only\"). NEVER describe a partial withdrawal as a full withdrawal. Check the amendment text carefully for words like \"DME retained\", \"remains\", \"converted to\".\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
 
-  const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:4000,messages:[{role:'user',content:prompt}]});
+  const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:4000,temperature:0,messages:[{role:'user',content:prompt}]});
   lg('Resposta recebida. A processar...');prog(70);
   const raw=data.content.map(c=>c.text||'').join('');
 
@@ -842,7 +857,7 @@ async function genDesc(id){
   const dCtx=a.diffText?'\n\nAnálise de diferenças:\n'+a.diffText:'';
   try{
     const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:500,
-      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras. Não mencionar COOPANS, usar apenas TOPSKY-ATC explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) acções necessárias. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+' | Impacto: '+c.impact+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+tsFiles+eCtx+dCtx}]});
+      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras. Não mencionar COOPANS, usar apenas TOPSKY-ATC explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) acções necessárias. IMPORTANTE: se a retirada de um navaid for parcial (ex. VOR retirado mas DME mantido), indicar explicitamente que o registo é MODIFICADO e não eliminado, e o que se mantém. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+tsFiles+eCtx+dCtx}]});
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     document.getElementById('descBox').value=txt;a.desc=txt;
   }catch(e){alert('Erro: '+e.message);}
@@ -854,11 +869,105 @@ function closeModal(){const a=analyses[curId];if(a){const b=document.getElementB
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 
 // ── PANEL 3 ──
+let initialSelection=null, removedItems={}, dupFlags={}, impactScope=[];
+
 function goImpact(){
-  const sel=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected);
-  document.getElementById('p3info').innerHTML='ℹ️ &nbsp;<span><strong>'+sel.length+' alterações seleccionadas.</strong> Reveja órgãos e sistemas. Clique Editar para ajustar.</span>';
+  // Snapshot da primeira análise (para poder repor mais tarde)
+  if(initialSelection===null){
+    initialSelection=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected).map(c=>c.id);
+  }
+  removedItems={};dupFlags={};
+  impactScope=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected).map(c=>c.id);
+  detectDuplicates();
+  renderImpact();
+  goStep(3);
+}
+
+const DUP_STOP=new Set(['AIRAC','HIGH','MEDIUM','LOW','ENR','GEN','ATC','NAV','VOR','NDB','DME',
+  'DVOR','VORDME','VORTAC','TACAN','ILS','LOC','TWR','FIR','TMA','CTR','FRA','VHF','UHF','AIP','SID','STAR','IAP','HLDG',
+  'WPT','MSA','AWY','GEC','EFS','RWY','IFR','VFR','APP','ACC','AFTN','ICAO','UTC','CAT',
+  'NM','FT','FL','KT','MHz','AND','THE','FOR','FROM','NEW','OLD','RNAV','RNP','PANS',
+  'OPS','NON','ADR','ATS','ATM','REF','CHG','UPD','ADD','DEL','COR','HLP','HEL','TWY','VSS','TAF','METAR','FIZ','TREND','AD','SUP']);
+const DUP_NAME_STOP=new Set(['CHART','CHARTS','BACKCHART','UPDATED','UPDATE','PORTUGAL','HOSPITAL','AERODROME','HELIPORT',
+  'SECTION','INSERTED','REMOVED','WITHDRAWN','LOCATION','INDICATOR','INDICATORS','INDEX','LISTED','ADDED','RADIO',
+  'NAVIGATION','AIDS','ROUTE','TERMINAL','AREA','AIRSPACE','FREE','SHOWN','DEPICTED','AMENDMENT','VISUAL','SEGMENT',
+  'SURFACE','PENETRATION','FORMATTING','COMPLIANCE','APRONS','TAXIWAYS','TAXIWAY','RESTAURANT','SCHEDULE','EDITORIAL',
+  'TRAINING','FLIGHTS','FLIGHT','RESTRICTIONS','PARKING','DOCKING','ALTITUDE','COORDINATES','SIGNIFICANT','POINT',
+  'PROCEDURE','PROCEDURES','SERVICES','SERVICE','SURVEILLANCE','FORECAST','FORECASTS','WARNINGS','PLANNING','TABLE',
+  'HOURS','NUMBER','ADDRESS','UNITS','MOVED','CHANGED','CHANGE','CORRECTION','CORRECTED','REMARKS','POSITION','EDITED']);
+const IMP_ORDER={HIGH:3,MEDIUM:2,LOW:1};
+
+function detectDuplicates(){
+  // v8: agrupa por identificador especifico (SGR, LAR, LPLR, KOPAV...)
+  // ou por 2+ nomes proprios partilhados (Beatriz Angelo, Loures...).
+  // Primario do grupo = entrada nao-carta com maior impacto.
+  // Cartas duplicadas -> removidas automaticamente (reversivel).
+  // Restantes duplicados -> marcados para revisao manual.
+  function keysOf(c){
+    const desc=(c.description||'')+' '+((analyses[c.id]&&analyses[c.id].desc)||'');
+    const codes=(desc.match(/\b[A-Z]{2,5}\b/g)||[]).filter(k=>!DUP_STOP.has(k)&&k!==c.ad);
+    const names=(desc.match(/\b[A-ZÀ-Ú][a-zà-ú]{3,}\b/g)||[]).map(w=>w.toUpperCase())
+      .filter(w=>!DUP_NAME_STOP.has(w)&&!DUP_STOP.has(w));
+    return {codes:new Set(codes),names:new Set(names)};
+  }
+  function shares(a,b){
+    for(const k of a.codes)if(b.codes.has(k))return true;
+    let n=0;for(const k of a.names)if(b.names.has(k))n++;
+    return n>=2;
+  }
+  const items=impactScope.map(id=>{
+    const c=changes.find(x=>x.id===id);
+    const k=keysOf(c);
+    return {id,c,codes:k.codes,names:k.names,
+      isChart:/\bchart\b|\bcarta\b|backchart/i.test(c.description||''),
+      imp:IMP_ORDER[c.impact]||1};
+  });
+  // Agrupamento
+  const groups=[];
+  items.forEach(it=>{
+    const g=groups.find(gr=>gr.some(o=>shares(o,it)));
+    if(g)g.push(it);else groups.push([it]);
+  });
+  groups.forEach(gr=>{
+    if(gr.length<2)return;
+    // Primario: preferir nao-carta, depois maior impacto, depois o primeiro
+    const sorted=[...gr].sort((a,b)=>(a.isChart-b.isChart)||(b.imp-a.imp));
+    const primary=sorted[0];
+    gr.forEach(it=>{
+      if(it.id===primary.id)return;
+      if(it.isChart&&!primary.isChart){
+        // Carta que repete o tema do primario -> remocao automatica reversivel
+        removedItems[it.id]={reason:'auto',primary:primary.c.description};
+        analyses[it.id].selected=false;
+        const chk=document.querySelector('.rc[data-id="'+it.id+'"]');if(chk)chk.checked=false;
+      }else{
+        dupFlags[it.id]=primary.c.description;
+      }
+    });
+  });
+  updBtn();
+}
+
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function renderImpact(){
+  const activeIds=impactScope.filter(id=>!removedItems[id]);
+  const removedIds=impactScope.filter(id=>removedItems[id]);
+  const autoN=removedIds.filter(id=>removedItems[id].reason==='auto').length;
+  const dupN=activeIds.filter(id=>dupFlags[id]).length;
+
+  // Info strip
+  const strip=document.getElementById('p3info');
+  let h='ℹ️ &nbsp;<span><strong>'+activeIds.length+' alteração(ões) para exportar.</strong> Reveja antes de exportar.</span>';
+  if(autoN>0)h+='<span style="background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;margin-left:10px;white-space:nowrap">✓ '+autoN+' actualização(ões) de carta removida(s) — ver secção Removidos ↓</span>';
+  if(dupN>0)h+='<button class="btn btn-sm" onclick="removeDuplicates()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0">✕ Remover '+dupN+' duplicado(s)</button>';
+  h+='<button class="btn btn-sm" onclick="restoreInitial()" style="background:#fff;border:1px solid var(--border2);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Repõe a selecção original da primeira análise e todas as remoções">↺ Repor análise inicial</button>';
+  strip.innerHTML=h;
+
+  // Blocos activos por AD
   const list=document.getElementById('impactList');list.innerHTML='';
-  const byAd={};sel.forEach(c=>{if(!byAd[c.ad])byAd[c.ad]=[];byAd[c.ad].push(c);});
+  const byAd={};
+  activeIds.forEach(id=>{const c=changes.find(x=>x.id===id);if(!byAd[c.ad])byAd[c.ad]=[];byAd[c.ad].push(c);});
   Object.keys(byAd).sort().forEach(function(ad){
     const chgs=byAd[ad];
     const blk=document.createElement('div');
@@ -867,133 +976,97 @@ function goImpact(){
     chgs.forEach(function(c){
       const a=analyses[c.id];
       const oT=a.organs.map(oid=>'<span class="tag">'+oid+'</span>').join('')||'<span style="color:var(--muted);font-size:11px">Sem órgão</span>';
-      const sT=a.systems.slice(0,3).map(s=>'<span class="tag">'+s+'</span>').join('')+(a.systems.length>3?'<span class="tag">+'+( a.systems.length-3)+'</span>':'');
+      const sT=a.systems.slice(0,3).map(s=>'<span class="tag">'+s+'</span>').join('')+(a.systems.length>3?'<span class="tag">+'+(a.systems.length-3)+'</span>':'');
+      const dupB=dupFlags[c.id]?'<span class="dup-badge" title="Este tema já aparece em: '+esc(dupFlags[c.id])+'" style="background:#fff8e1;color:#92400e;border:1px solid #fbbf24;border-radius:5px;font-size:10px;padding:1px 7px;margin-left:8px;vertical-align:middle;white-space:nowrap">⚠️ duplicado provável</span>':'';
       const row=document.createElement('div');
       row.className='impact-row';row.dataset.id=c.id;
       row.innerHTML='<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:2px">'+iPT(c.impact)+'</span>'+
         '<div style="flex:1;min-width:0">'+
-          '<div class="impact-desc">'+c.description+'</div>'+
+          '<div class="impact-desc">'+c.description+dupB+'</div>'+
           '<div style="margin-bottom:4px">'+oT+'</div>'+
           '<div>'+sT+'</div>'+
           (a.desc?'<div class="impact-meta">'+a.desc.substring(0,110)+'...</div>':'')+
         '</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">'+
-        '<button class="btn btn-secondary btn-sm" onclick="openModal(\''+c.id+'\')" >Editar</button>'+
-        '<button class="btn btn-sm" onclick="removeImpact(\''+c.id+'\',this)" style="background:#fff3f3;border:1px solid #fca5a5;color:#b91c1c;font-size:11px">✕ Remover</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="openModal(\''+c.id+'\')">Editar</button>'+
+        '<button class="btn btn-sm" onclick="removeImpact(\''+c.id+'\')" style="background:#fff3f3;border:1px solid #fca5a5;color:#b91c1c;font-size:11px">✕ Remover</button>'+
       '</div>';
       blk.appendChild(row);
     });
     list.appendChild(blk);
   });
-  goStep(3);setTimeout(flagDuplicates,50);
-}
 
-function removeImpact(id,btn){
-  analyses[id].selected=false;
-  const row=btn?btn.closest('.impact-row'):document.querySelector('.impact-row[data-id="'+id+'"]');
-  if(!row)return;
-  const blk=row.closest('.ad-block');
-  row.remove();
-  if(blk&&!blk.querySelector('.impact-row'))blk.remove();
-  const n=document.querySelectorAll('.impact-row').length;
-  document.getElementById('p3info').innerHTML='ℹ️ &nbsp;<span><strong>'+n+' alteração(ões) para exportar.</strong> Reveja antes de exportar.</span>';
-  const chk=document.querySelector('.rc[data-id="'+id+'"]');
-  if(chk)chk.checked=false;
-  updBtn();
-}
-
-function flagDuplicates(){
-  // v7: Detects entries sharing the same navaid/fix ID.
-  // Sources: short description title + AI-generated impact text (analyses[id].desc).
-  // Auto-removes silently when duplicate has LOWER impact than primary.
-  // Badges remaining ambiguous duplicates (same impact level) for manual review.
-  const STOP=new Set(['AIRAC','HIGH','MEDIUM','LOW','ENR','GEN','ATC','NAV','VOR','NDB','DME',
-    'ILS','LOC','TWR','FIR','TMA','CTR','FRA','VHF','UHF','AIP','SID','STAR','IAP','HLDG',
-    'WPT','MSA','AWY','GEC','EFS','RWY','IFR','VFR','APP','ACC','AFTN','ICAO','UTC','CAT',
-    'NM','FT','FL','KT','MHz','AND','THE','FOR','FROM','NEW','OLD','RNAV','RNP','PANS',
-    'OPS','NON','ADR','ATS','ATM','REF','CHG','UPD','ADD','DEL','COR']);
-  const IMP_ORDER={HIGH:3,MEDIUM:2,LOW:1};
-
-  function extractKeys(id){
-    // Scan both the visible title and the stored IA description
-    const row=document.querySelector('.impact-row[data-id="'+id+'"]');
-    const title=(row&&row.querySelector('.impact-desc'))?row.querySelector('.impact-desc').textContent:'';
-    const aiDesc=(analyses[id]&&analyses[id].desc)||'';
-    const combined=title+' '+aiDesc;
-    return [...new Set((combined.match(/\b[A-Z]{2,5}\b/g)||[]).filter(k=>!STOP.has(k)))];
-  }
-
-  const rows=[...document.querySelectorAll('.impact-row')];
-  // seen: keyword -> {id, imp} of highest-priority row seen so far
-  const seen={};
-  let autoRemoved=0;
-  let dupCount=0;
-
-  rows.forEach(row=>{
-    const id=row.dataset.id;
-    const c=changes.find(x=>x.id===id);
-    const impScore=IMP_ORDER[c?c.impact:'LOW']||1;
-    const keys=extractKeys(id);
-    let isDup=false;
-    let primaryImpScore=0;
-
-    keys.forEach(k=>{
-      if(seen[k]&&seen[k].id!==id){
-        isDup=true;
-        primaryImpScore=Math.max(primaryImpScore,seen[k].imp);
-      } else if(!seen[k]){
-        seen[k]={id,imp:impScore};
-      }
+  // Secção Removidos (reversível)
+  if(removedIds.length){
+    const blk=document.createElement('div');
+    blk.className='ad-block';
+    blk.style.opacity='0.85';
+    blk.innerHTML='<div class="ad-block-hdr" style="background:#fdf2f2"><span class="ad-code" style="color:#b91c1c">🗑 Removidos</span><span class="ad-count">'+removedIds.length+' item(ns) — não serão exportados</span></div>';
+    removedIds.forEach(function(id){
+      const c=changes.find(x=>x.id===id);
+      const r=removedItems[id];
+      let reasonT='';
+      if(r.reason==='auto')reasonT='<span class="tag" style="background:#f0fdf4;color:#166534;border-color:#86efac">carta duplicada — removida automaticamente</span>';
+      else if(r.reason==='dup')reasonT='<span class="tag" style="background:#fff8e1;color:#92400e;border-color:#fbbf24">duplicado removido</span>';
+      else reasonT='<span class="tag" style="background:#fff3f3;color:#b91c1c;border-color:#fca5a5">removido manualmente</span>';
+      const primT=r.primary?'<div class="impact-meta">Tema mantido em: '+esc(r.primary)+'</div>':'';
+      const row=document.createElement('div');
+      row.className='impact-row';row.dataset.id=id;
+      row.innerHTML='<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:2px;opacity:.6">'+iPT(c.impact)+'</span>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div class="impact-desc" style="text-decoration:line-through;color:var(--muted)">'+c.description+'</div>'+
+          '<div style="margin-bottom:4px">'+reasonT+'</div>'+primT+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">'+
+        '<button class="btn btn-sm" onclick="restoreItem(\''+id+'\')" style="background:#f0fdf4;border:1px solid #86efac;color:#166534;font-size:11px">↩ Repor</button>'+
+      '</div>';
+      blk.appendChild(row);
     });
-
-    if(isDup){
-      if(impScore<primaryImpScore){
-        // Clear case: lower impact than primary — remove silently
-        removeImpact(id,null);
-        autoRemoved++;
-      } else {
-        // Same or ambiguous impact — badge for manual review
-        const descEl=row.querySelector('.impact-desc');
-        if(descEl&&!descEl.querySelector('.dup-badge')){
-          const b=document.createElement('span');
-          b.className='dup-badge';b.dataset.dupId=id;
-          b.style.cssText='background:#fff8e1;color:#92400e;border:1px solid #fbbf24;'
-            +'border-radius:5px;font-size:10px;padding:1px 7px;margin-left:8px;vertical-align:middle;white-space:nowrap';
-          b.title='Este tema ja aparece numa entrada anterior. Considere remover.';
-          b.textContent='⚠️ duplicado provavel';
-          descEl.appendChild(b);
-          dupCount++;
-        }
-      }
-    }
-  });
-
-  // Update the info strip
-  const strip=document.getElementById('p3info');
-  if(autoRemoved>0){
-    const note=document.createElement('span');
-    note.style.cssText='background:#f0fdf4;border:1px solid #86efac;border-radius:5px;'
-      +'font-size:11px;color:#166534;padding:2px 10px;margin-left:10px;white-space:nowrap';
-    note.textContent='✓ '+autoRemoved+' actualização(es) de carta removida(s) automaticamente';
-    strip.appendChild(note);
+    list.appendChild(blk);
   }
-  if(dupCount>0&&!document.getElementById('btnRemoveDups')){
-    const btn=document.createElement('button');
-    btn.id='btnRemoveDups';btn.className='btn btn-sm';
-    btn.style.cssText='background:#fff8e1;border:1px solid #fbbf24;color:#92400e;'
-      +'margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0';
-    btn.textContent='✕ Remover '+dupCount+' duplicado(s)';
-    btn.onclick=removeDuplicates;
-    strip.appendChild(btn);
-  }
+}
+
+function removeImpact(id){
+  removedItems[id]={reason:'manual'};
+  analyses[id].selected=false;
+  const chk=document.querySelector('.rc[data-id="'+id+'"]');if(chk)chk.checked=false;
+  updBtn();renderImpact();
+}
+
+function restoreItem(id){
+  delete removedItems[id];
+  analyses[id].selected=true;
+  const chk=document.querySelector('.rc[data-id="'+id+'"]');if(chk)chk.checked=true;
+  updBtn();renderImpact();setStatus('Alteração reposta.');
 }
 
 function removeDuplicates(){
-  document.querySelectorAll('[data-dup-id]').forEach(badge=>{
-    removeImpact(badge.dataset.dupId,null);
+  Object.keys(dupFlags).forEach(function(id){
+    if(removedItems[id])return;
+    removedItems[id]={reason:'dup',primary:dupFlags[id]};
+    analyses[id].selected=false;
+    const chk=document.querySelector('.rc[data-id="'+id+'"]');if(chk)chk.checked=false;
   });
-  const btn=document.getElementById('btnRemoveDups');
-  if(btn)btn.remove();
+  updBtn();renderImpact();setStatus('Duplicados removidos — pode repô-los na secção Removidos.');
+}
+
+function restoreInitialSel(){
+  if(initialSelection===null){alert('Ainda não foi feita nenhuma análise de impacto.');return;}
+  changes.forEach(function(c){
+    const on=initialSelection.includes(c.id);
+    analyses[c.id].selected=on;
+    const chk=document.querySelector('.rc[data-id="'+c.id+'"]');if(chk)chk.checked=on;
+  });
+  updBtn();setStatus('Selecção inicial reposta ('+initialSelection.length+' alterações).');
+}
+
+function restoreInitial(){
+  if(!confirm('Repor a análise inicial? Todas as remoções e alterações de selecção serão desfeitas.'))return;
+  restoreInitialSel();
+  removedItems={};dupFlags={};
+  impactScope=initialSelection.slice();
+  detectDuplicates();
+  renderImpact();
 }
 
 // ── PANEL 4 ──
@@ -1011,7 +1084,7 @@ function buildEmails(){
     let bodyLines='Caro(a) responsável,\n\nNo âmbito do AIRAC '+meta.number+' (efectivo '+meta.effectiveDate+'), foram identificadas as seguintes alterações com impacto nos sistemas ATC sob responsabilidade de '+org.name+' ('+org.code+'):\n\n';
     bodyLines+=items.map(function(c,i){
       const a=analyses[c.id];
-      return (i+1)+'. '+c.ad+'  Alteração: '+c.description+' — Impacto: '+iPT(c.impact)+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
+      return (i+1)+'. '+c.ad+'  Alteração: '+c.description+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
     }).join('\n\n---\n\n');
     bodyLines+='\n\nAgradecia confirmação do impacto e indicação das acções a realizar.\n\nCom os melhores cumprimentos,\nGOPLIS/DOPLIS — NAV Portugal';
     const card=document.createElement('div');card.className='ecard';
@@ -1058,12 +1131,17 @@ function buildPDF(){
   L.push('');L.push('='.repeat(65));L.push('');
   L.push('O presente documento lista as alterações do AIRAC '+meta.number+' com impacto nos sistemas ATC, para acção do ATOPLIS.');
   L.push('');
-  ['HIGH','MEDIUM','LOW'].forEach(function(imp){
-    const g=sel.filter(c=>c.impact===imp);if(!g.length)return;
-    L.push('-'.repeat(65));L.push('IMPACTO '+iPT(imp)+' — '+g.length+' item(ns)');L.push('-'.repeat(65));L.push('');
+  // Agrupar por parte: GEN primeiro, ENR depois, ADs por ordem alfabética
+  const parts=[...new Set(sel.map(c=>c.ad))].sort(function(a,b){
+    const w=x=>x==='GEN'?0:x==='ENR'?1:2;
+    return w(a)-w(b)||a.localeCompare(b);
+  });
+  parts.forEach(function(part){
+    const g=sel.filter(c=>c.ad===part);if(!g.length)return;
+    L.push('-'.repeat(65));L.push(part+' — '+g.length+' item(ns)');L.push('-'.repeat(65));L.push('');
     g.forEach(function(c,i){
       const a=analyses[c.id];
-      L.push((i+1)+'. '+c.ad+'  Alteração: '+c.description);   L.push('   Categorias: '+(c.categories||[]).join(', '));
+      L.push((i+1)+'. '+(c.section?c.section+'  ':'')+'Alteração: '+c.description);   L.push('   Categorias: '+(c.categories||[]).join(', '));
       L.push('   Órgãos: '+a.organs.map(function(oid){const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A');
       L.push('   Sistemas: '+a.systems.join(', ')||'N/A');
       if(a.systemsDetail){
@@ -1074,6 +1152,26 @@ function buildPDF(){
       L.push('');
     });
   });
+
+  // Itens revistos mas excluídos (documentar como "vistos, sem acção")
+  const excluded=impactScope.filter(id=>removedItems[id]).map(id=>({c:changes.find(x=>x.id===id),r:removedItems[id]}));
+  if(excluded.length){
+    L.push('-'.repeat(65));
+    L.push('ITENS REVISTOS SEM ACÇÃO NOS SISTEMAS — '+excluded.length+' item(ns)');
+    L.push('-'.repeat(65));L.push('');
+    L.push('Os seguintes itens foram analisados e excluídos da acção, ficando registados como revistos:');
+    L.push('');
+    excluded.forEach(function(x,i){
+      const motivo=x.r.reason==='auto'?'carta que apenas reflecte alteração já listada acima':
+                   x.r.reason==='dup'?'duplicado de item já listado acima':
+                   'excluído após revisão manual — sem acção nos sistemas';
+      L.push((i+1)+'. '+x.c.ad+(x.c.section?' '+x.c.section:'')+'  '+x.c.description);
+      L.push('   Motivo: '+motivo);
+      if(x.r.primary)L.push('   Tema tratado em: '+x.r.primary);
+      L.push('');
+    });
+  }
+
   L.push('='.repeat(65));
   L.push('Gerado por AIRAC Impact Tool — GOPLIS/DOPLIS — NAV Portugal — '+new Date().toLocaleDateString('pt-PT'));
   document.getElementById('pdfContent').value=L.join('\n');
@@ -1088,6 +1186,70 @@ function genPDF(){
   w.document.close();setStatus('PDF aberto para impressão.');
 }
 
+// ── AJUDA ──
+const HELP_CATS=[
+  ['SID','Procedimento de partida (Standard Instrument Departure)','NAV-DB'],
+  ['STAR','Procedimento de chegada (Standard Arrival)','NAV-DB'],
+  ['IAP','Aproximação por instrumentos','NAV-DB'],
+  ['HLDG','Espera publicada (holding)','NAV-DB'],
+  ['WPT','Fixo / waypoint','NAV-DB'],
+  ['NAV','Ajuda rádio à navegação (VOR/NDB/DME/ILS)','NAV-DB'],
+  ['RWY','Designação ou parâmetros de pista','NAV-DB'],
+  ['FREQ','Frequência de comunicação ou navegação','NAV-DB'],
+  ['AWY','Airway / rota ENR','NAV-DB'],
+  ['MSA','Altitude mínima de sector','NAV-DB'],
+  ['HLP','Helicóptero / heliporto','NAV-DB'],
+  ['PROC','Procedimento ATC operacional (sem dados de navegação)','Operacional'],
+  ['FPL','Plano de voo / FF-ICE / AIDC / AFTN','Operacional'],
+  ['SPACE','Classificação ou limites de espaço aéreo','Operacional'],
+  ['RESTRICT','Área restrita / proibida','Operacional'],
+  ['GER','Administrativo / formatação','Operacional']
+];
+const HELP_IMPS=[
+  ['HIGH','ALTO','Novo navaid, procedimento ou fixo (SID/STAR/IAP/WPT/NAV/RWY/HLP) — exige actualização da base de dados de navegação dos sistemas.'],
+  ['MEDIUM','MÉDIO','Modificação de dados de navegação existentes (HLDG/FREQ/AWY/MSA).'],
+  ['LOW','BAIXO','Alteração operacional ou administrativa sem impacto na base de dados de navegação (PROC/FPL/SPACE/RESTRICT/GER).']
+];
+function openHelp(){
+  const b=document.getElementById('helpBody');
+  let h='';
+  h+='<h4 style="font-size:13px;color:var(--nav);margin-bottom:8px">📶 Níveis de impacto</h4>';
+  h+='<p style="font-size:11px;color:var(--muted);margin-bottom:10px">O impacto é atribuído automaticamente pela análise e serve para priorizar a revisão. Não aparece no relatório final nem nos emails.</p>';
+  HELP_IMPS.forEach(function(x){
+    h+='<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">'+
+      '<span class="imp imp-'+x[0]+'" style="flex-shrink:0">'+x[1]+'</span>'+
+      '<span style="font-size:12px">'+x[2]+'</span></div>';
+  });
+  h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🏷 Categorias</h4>';
+  h+='<p style="font-size:11px;color:var(--muted);margin-bottom:10px">Categorias <strong>NAV-DB</strong> implicam actualização de datasets dos sistemas; categorias <strong>Operacionais</strong> não têm impacto na base de dados de navegação.</p>';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  HELP_CATS.forEach(function(x){
+    h+='<tr style="border-bottom:1px solid var(--border)">'+
+      '<td style="padding:5px 8px;white-space:nowrap"><span class="tag">'+x[0]+'</span></td>'+
+      '<td style="padding:5px 8px">'+x[1]+'</td>'+
+      '<td style="padding:5px 8px;color:'+(x[2]==='NAV-DB'?'var(--nav2)':'var(--muted)')+';font-weight:600;white-space:nowrap">'+x[2]+'</td></tr>';
+  });
+  h+='</table>';
+  h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🖥 Sistemas analisados</h4>';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  h+='<tr style="border-bottom:1.5px solid var(--border2);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:5px 8px">Sistema</td><td style="padding:5px 8px">Fornecedor</td><td style="padding:5px 8px">Órgãos</td><td style="padding:5px 8px">Categorias que o afectam</td></tr>';
+  SYSTEMS_DEF.forEach(function(s){
+    h+='<tr style="border-bottom:1px solid var(--border)">'+
+      '<td style="padding:5px 8px;font-weight:700;color:var(--nav);white-space:nowrap">'+s.name+'</td>'+
+      '<td style="padding:5px 8px;white-space:nowrap">'+(s.vendor||'')+'</td>'+
+      '<td style="padding:5px 8px">'+s.organs.join(', ')+'</td>'+
+      '<td style="padding:5px 8px">'+(s.cats||[]).join(', ')+'</td></tr>';
+  });
+  h+='</table>';
+  h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🔁 Duplicados e reposição</h4>';
+  h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, alterações que repetem o mesmo tema (ex.: um navaid retirado e as cartas que apenas mostram essa remoção) são agrupadas: a entrada principal é mantida e as cartas duplicadas vão para a secção <strong>Removidos</strong>, no fundo da página.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">Todas as remoções são reversíveis com o botão <strong>↩ Repor</strong>. O botão <strong>↺ Repor análise inicial</strong> restaura a selecção original da primeira análise.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">Os itens removidos não desaparecem do registo: a nota técnica inclui uma secção final <strong>"Itens revistos sem acção nos sistemas"</strong> que documenta cada exclusão e o seu motivo.</p>';
+  b.innerHTML=h;
+  document.getElementById('helpBg').classList.add('open');
+}
+function closeHelp(){document.getElementById('helpBg').classList.remove('open');}
+
 function goStep(n){
   [1,2,3,4].forEach(function(i){
     document.getElementById('panel'+i).classList.toggle('active',i===n);
@@ -1100,6 +1262,7 @@ function goStep(n){
 function resetAll(){
   if(!confirm('Limpar todos os dados?'))return;
   changes=[];analyses={};meta={};curId=null;eaipCache={};
+  initialSelection=null;removedItems={};dupFlags={};impactScope=[];
   document.getElementById('fi').value='';
   document.getElementById('progWrap').style.display='none';
   document.getElementById('progLog').textContent='';
