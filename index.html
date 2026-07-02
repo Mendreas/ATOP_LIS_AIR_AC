@@ -398,7 +398,7 @@ const ORGANS=[
   {id:'TWRSAN',code:'LPPS',name:'TWR Porto Santo',email:'twrsan@nav.pt'}
 ];
 const SYSTEMS_DEF=[
-  {id:'TOPSKY',name:'TOPSKY-ATC (COOPANS)',vendor:'Thales',
+  {id:'TOPSKY',name:'TOPSKY-ATC',vendor:'Thales',
    organs:['TWRLIS','CCLIS','TWRPOR','TWRCAS','TWRFAR','TWRFUN','TWRSAN'],shared:true,
    cats:['SID','STAR','IAP','HLDG','WPT','NAV','RWY','FREQ','AWY','MSA','HLP'],
    secs:['AD','ENR','GEN'],adScoped:false,
@@ -587,7 +587,7 @@ async function runAI(pdfText){
     const _allOrg=[...new Set(_sd.flatMap(s=>s.organs))];
     analyses[c.id]={organs:_allOrg.length?_allOrg:(AD_ORG[c.ad]||[]),
       systems:_sd.map(s=>s.name),systemsDetail:_sd,
-      desc:'',eaipText:'',diffText:'',selected:_isFir};
+      desc:'',eaipText:'',diffText:'',selected:_isFir&&_sd.length>0};
   });
 
   lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa).');prog(100);
@@ -654,7 +654,6 @@ function buildPanel2(){
   fc.innerHTML='<option value="">Todas as categorias</option>';
   allCats.forEach(cat=>{const o=document.createElement('option');o.value=cat;o.textContent=cat;fc.appendChild(o);});
 
-  // Popular sistemas a partir dos dados reais
   const allSys=[...new Set(Object.values(analyses).flatMap(a=>a.systems||[]))].sort();
   const fs=document.getElementById('filtSys');
   fs.innerHTML='<option value="">Todos os sistemas</option>';
@@ -780,7 +779,7 @@ async function genDiff(id){
   if(!a.eaipText){diffEl.textContent='eAIP ainda não carregou. Aguarde.';return;}
   try{
     const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:700,
-      messages:[{role:'user',content:'És especialista ATC da NAV Portugal.\nAlteração AIRAC '+c.amdt+': '+c.description+'\nSecção: '+c.ad+' '+c.section+'\n\neAIP actual:\n'+a.eaipText.substring(0,5000)+'\n\nResponde em português:\nO QUE ESTÁ PUBLICADO ACTUALMENTE: [resumo do conteúdo actual relevante, max 80 palavras]\n\nO QUE MUDA COM O AIRAC '+c.amdt+': [o que muda especificamente, max 80 palavras]\n\nIMPACTO NOS SISTEMAS ATC: [impacto para TOPSKY/COOPANS/AIRAC DB, max 60 palavras]'}]});
+      messages:[{role:'user',content:'És especialista ATC da NAV Portugal.\nAlteração AIRAC '+c.amdt+': '+c.description+'\nSecção: '+c.ad+' '+c.section+'\n\neAIP actual:\n'+a.eaipText.substring(0,5000)+'\n\nResponde em português:\nO QUE ESTÁ PUBLICADO ACTUALMENTE: [resumo do conteúdo actual relevante, max 80 palavras]\n\nO QUE MUDA COM O AIRAC '+c.amdt+': [o que muda especificamente, max 80 palavras]\n\nIMPACTO NOS SISTEMAS ATC: [impacto para TOPSKY-ATC/AIRAC DB, max 60 palavras]'}]});
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     diffEl.innerHTML=txt.split('\n\n').map(function(s){
       if(s.indexOf('ACTUALMENTE')>-1)return '<span style="color:var(--muted);display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
@@ -843,7 +842,7 @@ async function genDesc(id){
   const dCtx=a.diffText?'\n\nAnálise de diferenças:\n'+a.diffText:'';
   try{
     const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:500,
-      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) acções necessárias. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+' | Impacto: '+c.impact+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+tsFiles+eCtx+dCtx}]});
+      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras. Não mencionar COOPANS, usar apenas TOPSKY-ATC explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) acções necessárias. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+' | Impacto: '+c.impact+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+tsFiles+eCtx+dCtx}]});
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     document.getElementById('descBox').value=txt;a.desc=txt;
   }catch(e){alert('Erro: '+e.message);}
@@ -870,7 +869,7 @@ function goImpact(){
       const oT=a.organs.map(oid=>'<span class="tag">'+oid+'</span>').join('')||'<span style="color:var(--muted);font-size:11px">Sem órgão</span>';
       const sT=a.systems.slice(0,3).map(s=>'<span class="tag">'+s+'</span>').join('')+(a.systems.length>3?'<span class="tag">+'+( a.systems.length-3)+'</span>':'');
       const row=document.createElement('div');
-      row.className='impact-row';
+      row.className='impact-row';row.dataset.id=c.id;
       row.innerHTML='<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:2px">'+iPT(c.impact)+'</span>'+
         '<div style="flex:1;min-width:0">'+
           '<div class="impact-desc">'+c.description+'</div>'+
@@ -878,12 +877,123 @@ function goImpact(){
           '<div>'+sT+'</div>'+
           (a.desc?'<div class="impact-meta">'+a.desc.substring(0,110)+'...</div>':'')+
         '</div>'+
-        '<button class="btn btn-secondary btn-sm" onclick="openModal(\''+c.id+'\')" style="flex-shrink:0">Editar</button>';
+        '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">'+
+        '<button class="btn btn-secondary btn-sm" onclick="openModal(\''+c.id+'\')" >Editar</button>'+
+        '<button class="btn btn-sm" onclick="removeImpact(\''+c.id+'\',this)" style="background:#fff3f3;border:1px solid #fca5a5;color:#b91c1c;font-size:11px">✕ Remover</button>'+
+      '</div>';
       blk.appendChild(row);
     });
     list.appendChild(blk);
   });
-  goStep(3);
+  goStep(3);setTimeout(flagDuplicates,50);
+}
+
+function removeImpact(id,btn){
+  analyses[id].selected=false;
+  const row=btn?btn.closest('.impact-row'):document.querySelector('.impact-row[data-id="'+id+'"]');
+  if(!row)return;
+  const blk=row.closest('.ad-block');
+  row.remove();
+  if(blk&&!blk.querySelector('.impact-row'))blk.remove();
+  const n=document.querySelectorAll('.impact-row').length;
+  document.getElementById('p3info').innerHTML='ℹ️ &nbsp;<span><strong>'+n+' alteração(ões) para exportar.</strong> Reveja antes de exportar.</span>';
+  const chk=document.querySelector('.rc[data-id="'+id+'"]');
+  if(chk)chk.checked=false;
+  updBtn();
+}
+
+function flagDuplicates(){
+  // v7: Detects entries sharing the same navaid/fix ID.
+  // Sources: short description title + AI-generated impact text (analyses[id].desc).
+  // Auto-removes silently when duplicate has LOWER impact than primary.
+  // Badges remaining ambiguous duplicates (same impact level) for manual review.
+  const STOP=new Set(['AIRAC','HIGH','MEDIUM','LOW','ENR','GEN','ATC','NAV','VOR','NDB','DME',
+    'ILS','LOC','TWR','FIR','TMA','CTR','FRA','VHF','UHF','AIP','SID','STAR','IAP','HLDG',
+    'WPT','MSA','AWY','GEC','EFS','RWY','IFR','VFR','APP','ACC','AFTN','ICAO','UTC','CAT',
+    'NM','FT','FL','KT','MHz','AND','THE','FOR','FROM','NEW','OLD','RNAV','RNP','PANS',
+    'OPS','NON','ADR','ATS','ATM','REF','CHG','UPD','ADD','DEL','COR']);
+  const IMP_ORDER={HIGH:3,MEDIUM:2,LOW:1};
+
+  function extractKeys(id){
+    // Scan both the visible title and the stored IA description
+    const row=document.querySelector('.impact-row[data-id="'+id+'"]');
+    const title=(row&&row.querySelector('.impact-desc'))?row.querySelector('.impact-desc').textContent:'';
+    const aiDesc=(analyses[id]&&analyses[id].desc)||'';
+    const combined=title+' '+aiDesc;
+    return [...new Set((combined.match(/\b[A-Z]{2,5}\b/g)||[]).filter(k=>!STOP.has(k)))];
+  }
+
+  const rows=[...document.querySelectorAll('.impact-row')];
+  // seen: keyword -> {id, imp} of highest-priority row seen so far
+  const seen={};
+  let autoRemoved=0;
+  let dupCount=0;
+
+  rows.forEach(row=>{
+    const id=row.dataset.id;
+    const c=changes.find(x=>x.id===id);
+    const impScore=IMP_ORDER[c?c.impact:'LOW']||1;
+    const keys=extractKeys(id);
+    let isDup=false;
+    let primaryImpScore=0;
+
+    keys.forEach(k=>{
+      if(seen[k]&&seen[k].id!==id){
+        isDup=true;
+        primaryImpScore=Math.max(primaryImpScore,seen[k].imp);
+      } else if(!seen[k]){
+        seen[k]={id,imp:impScore};
+      }
+    });
+
+    if(isDup){
+      if(impScore<primaryImpScore){
+        // Clear case: lower impact than primary — remove silently
+        removeImpact(id,null);
+        autoRemoved++;
+      } else {
+        // Same or ambiguous impact — badge for manual review
+        const descEl=row.querySelector('.impact-desc');
+        if(descEl&&!descEl.querySelector('.dup-badge')){
+          const b=document.createElement('span');
+          b.className='dup-badge';b.dataset.dupId=id;
+          b.style.cssText='background:#fff8e1;color:#92400e;border:1px solid #fbbf24;'
+            +'border-radius:5px;font-size:10px;padding:1px 7px;margin-left:8px;vertical-align:middle;white-space:nowrap';
+          b.title='Este tema ja aparece numa entrada anterior. Considere remover.';
+          b.textContent='⚠️ duplicado provavel';
+          descEl.appendChild(b);
+          dupCount++;
+        }
+      }
+    }
+  });
+
+  // Update the info strip
+  const strip=document.getElementById('p3info');
+  if(autoRemoved>0){
+    const note=document.createElement('span');
+    note.style.cssText='background:#f0fdf4;border:1px solid #86efac;border-radius:5px;'
+      +'font-size:11px;color:#166534;padding:2px 10px;margin-left:10px;white-space:nowrap';
+    note.textContent='✓ '+autoRemoved+' actualização(es) de carta removida(s) automaticamente';
+    strip.appendChild(note);
+  }
+  if(dupCount>0&&!document.getElementById('btnRemoveDups')){
+    const btn=document.createElement('button');
+    btn.id='btnRemoveDups';btn.className='btn btn-sm';
+    btn.style.cssText='background:#fff8e1;border:1px solid #fbbf24;color:#92400e;'
+      +'margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0';
+    btn.textContent='✕ Remover '+dupCount+' duplicado(s)';
+    btn.onclick=removeDuplicates;
+    strip.appendChild(btn);
+  }
+}
+
+function removeDuplicates(){
+  document.querySelectorAll('[data-dup-id]').forEach(badge=>{
+    removeImpact(badge.dataset.dupId,null);
+  });
+  const btn=document.getElementById('btnRemoveDups');
+  if(btn)btn.remove();
 }
 
 // ── PANEL 4 ──
@@ -901,7 +1011,7 @@ function buildEmails(){
     let bodyLines='Caro(a) responsável,\n\nNo âmbito do AIRAC '+meta.number+' (efectivo '+meta.effectiveDate+'), foram identificadas as seguintes alterações com impacto nos sistemas ATC sob responsabilidade de '+org.name+' ('+org.code+'):\n\n';
     bodyLines+=items.map(function(c,i){
       const a=analyses[c.id];
-      return (i+1)+'. ['+c.ad+' | '+c.section+'] — Impacto: '+iPT(c.impact)+'\n'+c.description+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
+      return (i+1)+'. '+c.ad+'  Alteração: '+c.description+' — Impacto: '+iPT(c.impact)+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
     }).join('\n\n---\n\n');
     bodyLines+='\n\nAgradecia confirmação do impacto e indicação das acções a realizar.\n\nCom os melhores cumprimentos,\nGOPLIS/DOPLIS — NAV Portugal';
     const card=document.createElement('div');card.className='ecard';
@@ -953,9 +1063,7 @@ function buildPDF(){
     L.push('-'.repeat(65));L.push('IMPACTO '+iPT(imp)+' — '+g.length+' item(ns)');L.push('-'.repeat(65));L.push('');
     g.forEach(function(c,i){
       const a=analyses[c.id];
-      L.push((i+1)+'. '+c.ad+' | '+c.section);
-      L.push('   Alteração: '+c.description);
-      L.push('   Categorias: '+(c.categories||[]).join(', '));
+      L.push((i+1)+'. '+c.ad+'  Alteração: '+c.description);   L.push('   Categorias: '+(c.categories||[]).join(', '));
       L.push('   Órgãos: '+a.organs.map(function(oid){const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A');
       L.push('   Sistemas: '+a.systems.join(', ')||'N/A');
       if(a.systemsDetail){
