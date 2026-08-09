@@ -524,8 +524,12 @@ function doFile(f){
     try{
       lg('A extrair texto completo do PDF...');prog(20);
       const txt=await pdfToText({data:await f.arrayBuffer()},9999);
-      lg('Texto extraído ('+txt.length+' chars / ~'+Math.round(txt.length/4)+' tokens). A enviar para análise...');prog(35);
-      await runAI(txt);
+      // Poupança de créditos: a lista de alterações está nas primeiras páginas do amendment;
+      // as páginas de substituição não são necessárias para a extração.
+      const MAX_CHARS=60000;
+      const sent=txt.length>MAX_CHARS?txt.substring(0,MAX_CHARS):txt;
+      lg('Texto extraído: '+txt.length+' chars. A enviar '+sent.length+' chars (~'+Math.round(sent.length/4)+' tokens'+(txt.length>MAX_CHARS?' — apenas as primeiras páginas, onde está o resumo das alterações':'')+')...');prog(35);
+      await runAI(sent);
     }catch(e){lg('ERRO: '+e.message);setStatus('Erro: '+e.message);}
   })();
 }
@@ -798,7 +802,7 @@ async function genDiff(id){
   diffEl.innerHTML='<span class="spin"></span> A analisar com IA...';
   if(!a.eaipText){diffEl.textContent='eAIP ainda não carregou. Aguarde.';return;}
   try{
-    const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:700,
+    const data=await callAPI({model:'claude-haiku-4-5-20251001',max_tokens:700,
       messages:[{role:'user',content:'És especialista ATC da NAV Portugal.\nAlteração AIRAC '+c.amdt+': '+c.description+'\nSecção: '+c.ad+' '+c.section+'\n\neAIP actual:\n'+a.eaipText.substring(0,5000)+'\n\nResponde em português:\nO QUE ESTÁ PUBLICADO ACTUALMENTE: [resumo do conteúdo actual relevante, max 80 palavras]\n\nO QUE MUDA COM O AIRAC '+c.amdt+': [o que muda especificamente, max 80 palavras]\n\nIMPACTO NOS SISTEMAS ATC: [impacto para TOPSKY-ATC/AIRAC DB, max 60 palavras]'}]});
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     diffEl.innerHTML=txt.split('\n\n').map(function(s){
