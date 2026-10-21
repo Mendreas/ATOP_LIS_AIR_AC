@@ -583,6 +583,26 @@ function pagesForRef(ad,sec){
   const hit=main.filter(p=>rxSec.test(p.text));
   return hit.length?hit:[];
 }
+// Painel expansível com o texto da emenda para uma alteração — usado nos passos 2 e 3
+function amdtPanelHtml(id){
+  const c=changes.find(x=>x.id===id),a=analyses[id];
+  const ps=pagesForRef(c.ad,c.section);
+  const hdr='<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:11px;color:var(--muted)">'+
+    '<strong style="color:var(--nav)">📄 Texto novo da emenda — '+esc(c.ad)+' '+esc(c.section)+'</strong>'+
+    (ps.length?'<span>páginas '+ps.map(p=>p.i).join(', ')+' do PDF</span>':'')+
+    (c._origDescription?'<span title="Descrição original do sumário: '+esc(c._origDescription)+'" style="border:1px solid #fbbf24;background:#fff8e1;color:#92400e;border-radius:4px;padding:0 6px">descrição refinada pela IA</span>':'')+
+    '<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="event.stopPropagation();openModal(\''+id+'\')">Analisar / comparar com eAIP</button></div>';
+  const body=a&&a.amdtText
+    ?'<pre style="white-space:pre-wrap;font-family:Cascadia Code,Consolas,monospace;font-size:11px;line-height:1.6;max-height:260px;overflow-y:auto;margin:0;color:var(--text)">'+esc(a.amdtText)+'</pre>'
+    :'<div style="font-size:12px;color:var(--muted)">Sem páginas de substituição com texto para esta secção — normalmente é uma carta (gráfico) ou a secção não foi encontrada na emenda. Use "Analisar" para ver o eAIP.</div>';
+  return '<div style="background:#fdf8f5;border:1px solid var(--border);border-left:3px solid var(--nav3);border-radius:8px;padding:10px 14px" onclick="event.stopPropagation()">'+hdr+body+'</div>';
+}
+function toggleAmdt(id,ctx){
+  const el=document.getElementById('amdt'+(ctx||'2')+'_'+id);if(!el)return;
+  const open=el.style.display!=='none';
+  if(!open&&!el.dataset.built){el.innerHTML=(el.tagName==='TR'?'<td colspan="8" style="padding:6px 12px 10px">':'')+amdtPanelHtml(id)+(el.tagName==='TR'?'</td>':'');el.dataset.built='1';}
+  el.style.display=open?'none':(el.tagName==='TR'?'table-row':'block');
+}
 function amdtTextFor(ad,sec,cap){
   const ps=pagesForRef(ad,sec);if(!ps.length)return '';
   let t=ps.map(p=>'[pág. '+p.i+' — '+p.key+']\n'+p.text).join('\n\n');
@@ -832,11 +852,13 @@ function renderTable(data){
       '<td><strong style="font-size:11px;font-weight:700;color:var(--nav)">'+c._secType+'</strong></td>'+
       '<td><strong style="font-size:13px;color:var(--nav)">'+(c._secType==='AD'?c.ad:'')+'</strong></td>'+
       '<td style="font-size:11px;color:var(--muted);font-family:monospace">'+( c.section||'')+'</td>'+
-      '<td style="font-size:12px;line-height:1.5">'+c.description+'</td>'+
+      '<td style="font-size:12px;line-height:1.5;cursor:pointer" title="Clique para ver o texto da emenda" onclick="toggleAmdt(\''+c.id+'\')">'+c.description+(a.amdtText?' <span style="font-size:10px;color:var(--nav3)">📄</span>':'')+'</td>'+
       '<td>'+cats+'</td>'+
       '<td><span class="imp imp-'+c.impact+'">'+iPT(c.impact)+'</span></td>'+
       '<td><button class="btn btn-secondary btn-sm" onclick="openModal(\''+c.id+'\')">Analisar</button></td>';
     tb.appendChild(tr);
+    const dr=document.createElement('tr');dr.id='amdt2_'+c.id;dr.style.display='none';dr.style.background='#fdf8f5';
+    tb.appendChild(dr);
   });
 }
 
@@ -1180,9 +1202,11 @@ function renderImpact(){
           '<div style="margin-bottom:4px">'+oT+'</div>'+
           '<div>'+sT+'</div>'+
           (a.desc?'<div class="impact-meta">'+a.desc.substring(0,110)+'...</div>':'')+
+          '<div id="amdt3_'+c.id+'" style="display:none;margin-top:8px"></div>'+
         '</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">'+
         '<button class="btn btn-secondary btn-sm" onclick="openModal(\''+c.id+'\')">Editar</button>'+
+        '<button class="btn btn-secondary btn-sm" onclick="toggleAmdt(\''+c.id+'\',3)" title="Ver o texto novo da emenda para esta secção">📄 Emenda</button>'+
         '<button class="btn btn-sm" onclick="removeImpact(\''+c.id+'\')" style="background:#fff3f3;border:1px solid #fca5a5;color:#b91c1c;font-size:11px">✕ Remover</button>'+
       '</div>';
       blk.appendChild(row);
