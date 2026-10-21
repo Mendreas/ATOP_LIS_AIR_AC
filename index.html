@@ -132,6 +132,9 @@ header p{font-size:11px;color:rgba(212,165,165,0.8);margin-top:1px}
 .d-add{background:#fff3a0;color:#4a3a00;border-radius:2px;padding:0 1px}
 .d-del{background:#ffd9d9;color:#8a1c1c;text-decoration:line-through;border-radius:2px;padding:0 1px}
 .cmp-empty{color:var(--muted);font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;padding:20px}
+.d-cur{outline:2px solid var(--nav2);outline-offset:1px;box-shadow:0 0 0 4px rgba(93,46,70,.15)}
+.d-anchor{display:inline-block;width:0;height:1.2em;vertical-align:middle}
+.d-anchor.d-cur{width:6px;background:var(--nav2);border-radius:2px}
 /* ── BUTTONS ── */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;letter-spacing:.2px}
 .btn-primary{background:linear-gradient(135deg,var(--nav),var(--nav2));color:#fff;box-shadow:0 2px 8px rgba(0,71,171,0.25)}
@@ -411,7 +414,8 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
       <button class="btn btn-secondary btn-sm" onclick="cmpNav(-1)">‹</button>
       <select id="cmpSel" onchange="renderCompare(this.value)"></select>
       <button class="btn btn-secondary btn-sm" onclick="cmpNav(1)">›</button>
-      <div class="cmp-legend"><span><span class="d-add">acrescentado</span> na emenda</span><span><span class="d-del">retirado</span> do eAIP</span></div>
+      <span style="display:flex;align-items:center;gap:4px;margin-left:8px;font-size:11px;color:var(--muted)"><button class="btn btn-secondary btn-sm" onclick="cmpGoto(-1)" title="Diferença anterior (tecla ↑)">▲</button><button class="btn btn-secondary btn-sm" onclick="cmpGoto(1)" title="Diferença seguinte (tecla ↓)">▼</button><span id="cmpHunkLbl" style="min-width:120px">—</span></span>
+      <div class="cmp-legend"><span><span class="d-add">acrescentado</span> na emenda</span><span><span class="d-del">retirado</span> do eAIP</span><span style="font-size:10px">scroll sincronizado</span></div>
       <button class="modal-close" onclick="closeCompare()" title="Fechar">✕</button>
     </div>
     <div class="cmp-cols">
@@ -1459,14 +1463,18 @@ function cmpNav(d){
 }
 // Diff por palavras (LCS) — devolve HTML dos dois lados
 function tokenize(t){return t.split(/(\s+)/).filter(x=>x.length);}
+let cmpHunk=0,cmpCur=0;
 function diffWords(aText,bText,cap){
   const A=tokenize(aText).slice(0,cap||2500),B=tokenize(bText).slice(0,cap||2500);
   const n=A.length,m=B.length;
   // LCS sobre tokens não-espaço (espaços seguem o token anterior)
   const dp=new Array(n+1);for(let i=0;i<=n;i++)dp[i]=new Uint16Array(m+1);
   for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
-  let i=0,j=0,L=[],R=[];
-  const push=(arr,cls,tok)=>{if(/^\s+$/.test(tok)){arr.push(esc(tok));return;}arr.push(cls?'<span class="'+cls+'">'+esc(tok)+'</span>':esc(tok));};
+  let i=0,j=0,L=[],R=[],inHunk=false,lHas=false,rHas=false;
+  // cada sequência contígua de diferenças é um "hunk" numerado; se só existir num lado, o outro recebe uma âncora invisível
+  const open=()=>{if(!inHunk){cmpHunk++;inHunk=true;lHas=false;rHas=false;}};
+  const close=()=>{if(!inHunk)return;if(!lHas)L.push('<span class="d-anchor" data-h="'+cmpHunk+'"></span>');if(!rHas)R.push('<span class="d-anchor" data-h="'+cmpHunk+'"></span>');inHunk=false;};
+  const push=(arr,cls,tok)=>{if(/^\s+$/.test(tok)){arr.push(esc(tok));return;}if(cls){open();if(arr===L)lHas=true;else rHas=true;arr.push('<span class="'+cls+'" data-h="'+cmpHunk+'">'+esc(tok)+'</span>');}else{close();arr.push(esc(tok));}};
   while(i<n&&j<m){
     if(A[i]===B[j]){push(L,'',A[i]);push(R,'',B[j]);i++;j++;}
     else if(dp[i+1][j]>=dp[i][j+1]){push(L,'d-del',A[i]);i++;}
@@ -1474,11 +1482,12 @@ function diffWords(aText,bText,cap){
   }
   while(i<n){push(L,'d-del',A[i]);i++;}
   while(j<m){push(R,'d-add',B[j]);j++;}
+  close();
   return {left:L.join(''),right:R.join(''),truncated:tokenize(aText).length>(cap||2500)||tokenize(bText).length>(cap||2500)};
 }
 function hdrOf(p){const m=PAGE_HDR.exec(p);return m?m[0].replace(/\s+/g,' ').trim():null;}
 async function renderCompare(id){
-  cmpId=id;document.getElementById('cmpSel').value=id;
+  cmpId=id;document.getElementById('cmpSel').value=id;cmpHunk=0;cmpCur=0;
   const c=changes.find(x=>x.id===id),a=analyses[id];
   const L=document.getElementById('cmpLeft'),R=document.getElementById('cmpRight');
   document.getElementById('cmpAmdtNo').textContent='AIRAC '+(meta.number||'');
@@ -1500,7 +1509,7 @@ async function renderCompare(id){
     rh.push('<div class="cmp-page">'+esc(p.hdr)+'</div>');
     lh.push('<div class="cmp-page">'+esc(e?p.hdr:p.hdr+' — sem página correspondente no eAIP (página nova?)')+'</div>');
     if(e){matched++;const d=diffWords(e,p.text);lh.push(d.left);rh.push(d.right);if(d.truncated)rh.push('<div class="cmp-empty">[comparação truncada — página muito longa]</div>');}
-    else{rh.push('<span class="d-add">'+esc(p.text)+'</span>');}
+    else{cmpHunk++;lh.push('<span class="d-anchor" data-h="'+cmpHunk+'"></span>');rh.push('<span class="d-add" data-h="'+cmpHunk+'">'+esc(p.text)+'</span>');}
   });
   if(!matched&&ePages.length){
     // fallback: página do eAIP com a mesma secção no texto
@@ -1510,8 +1519,41 @@ async function renderCompare(id){
   }
   L.innerHTML=lh.join('')||'<div class="cmp-empty">Sem texto do eAIP para esta secção.</div>';
   R.innerHTML=rh.join('');
+  L.scrollTop=0;R.scrollTop=0;
+  updHunkLbl();
+  if(cmpHunk)setTimeout(function(){cmpGoto(1);},50);
 }
-document.addEventListener('keydown',e=>{if(document.getElementById('cmpBg').classList.contains('open')){if(e.key==='ArrowRight')cmpNav(1);if(e.key==='ArrowLeft')cmpNav(-1);if(e.key==='Escape')closeCompare();}});
+function updHunkLbl(){document.getElementById('cmpHunkLbl').textContent=cmpHunk?('diferença '+(cmpCur||'–')+' / '+cmpHunk):'sem diferenças';}
+// Ir para a diferença seguinte/anterior: posiciona AS DUAS colunas no mesmo hunk
+function cmpGoto(d){
+  if(!cmpHunk)return;
+  cmpCur=((cmpCur-1+d+cmpHunk)%cmpHunk)+1;
+  document.querySelectorAll('.d-cur').forEach(e=>e.classList.remove('d-cur'));
+  ['cmpLeft','cmpRight'].forEach(function(pid){
+    const pane=document.getElementById(pid);
+    const els=pane.querySelectorAll('[data-h="'+cmpCur+'"]');if(!els.length)return;
+    els.forEach(e=>e.classList.add('d-cur'));
+    const el=els[0];
+    cmpSyncLock=true;
+    pane.scrollTop=Math.max(0,el.offsetTop-pane.offsetTop-pane.clientHeight*0.3);
+    setTimeout(function(){cmpSyncLock=false;},80);
+  });
+  updHunkLbl();
+}
+// Scroll sincronizado (proporcional) entre as duas colunas
+let cmpSyncLock=false;
+function cmpSync(src,dst){
+  if(cmpSyncLock)return;cmpSyncLock=true;
+  const r=src.scrollTop/Math.max(1,src.scrollHeight-src.clientHeight);
+  dst.scrollTop=r*(dst.scrollHeight-dst.clientHeight);
+  requestAnimationFrame(function(){cmpSyncLock=false;});
+}
+window.addEventListener('DOMContentLoaded',function(){
+  const L=document.getElementById('cmpLeft'),R=document.getElementById('cmpRight');
+  L.addEventListener('scroll',function(){cmpSync(L,R);});
+  R.addEventListener('scroll',function(){cmpSync(R,L);});
+});
+document.addEventListener('keydown',e=>{if(document.getElementById('cmpBg').classList.contains('open')){if(e.key==='ArrowRight')cmpNav(1);if(e.key==='ArrowLeft')cmpNav(-1);if(e.key==='ArrowDown'){e.preventDefault();cmpGoto(1);}if(e.key==='ArrowUp'){e.preventDefault();cmpGoto(-1);}if(e.key==='Escape')closeCompare();}});
 
 // ── AJUDA ──
 const HELP_CATS=[
@@ -1572,7 +1614,7 @@ function openHelp(){
   h+='<p style="font-size:12px;margin-bottom:6px">Na extracção, a IA recebe o <strong>sumário</strong> da emenda (secções 1 e 2) e as <strong>páginas de substituição</strong> das secções nele referidas (até 10.000 caracteres por secção, 200.000 no total). As páginas GEN 0.x (registos e checklist) e as cartas sem texto são ignoradas.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No detalhe de cada alteração, a aba <strong>Publicado agora</strong> mostra o eAIP em vigor, <strong>Novo texto</strong> mostra as páginas da emenda para essa secção e <strong>O que mudou</strong> pede à IA a comparação antes→depois. A descrição para o ATOPLIS usa os dois textos.</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">⇄ Comparação de alterações</h4>';
-  h+='<p style="font-size:12px;margin-bottom:6px">O botão <strong>⇄ Comparação de alterações</strong> abre, lado a lado, a página do eAIP em vigor (esquerda) e a página correspondente da emenda (direita), alinhadas pelo cabeçalho (ex. ENR 4.1 - 3). O que a emenda acrescenta fica <span class="d-add">a amarelo</span>; o que desaparece do eAIP fica <span class="d-del">riscado a vermelho</span>. Use ‹ › ou as setas do teclado para percorrer as alterações. Os links abrem os PDFs reais.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">O botão <strong>⇄ Comparação de alterações</strong> abre, lado a lado, a página do eAIP em vigor (esquerda) e a página correspondente da emenda (direita), alinhadas pelo cabeçalho (ex. ENR 4.1 - 3). O que a emenda acrescenta fica <span class="d-add">a amarelo</span>; o que desaparece do eAIP fica <span class="d-del">riscado a vermelho</span>. Use ‹ › (ou ← →) para percorrer as alterações e ▲ ▼ (ou ↑ ↓) para saltar de diferença em diferença — as duas colunas posicionam-se no mesmo ponto; o scroll manual também é sincronizado. Os links abrem os PDFs reais.</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">💾 Sessões</h4>';
   h+='<p style="font-size:12px;margin-bottom:6px">O trabalho é guardado automaticamente neste browser, por número de AIRAC: selecções, órgãos, sistemas, descrições e remoções. Pode fechar o separador e retomar no passo 1. <strong>⬇ Exportar sessão</strong> descarrega um JSON para arquivo ou para continuar noutro computador (<strong>⬆ Importar JSON</strong>).</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, <strong>✨ Gerar N descrições</strong> cria com IA as descrições de todos os itens que ainda não a têm, uma chamada por item.</p>';
