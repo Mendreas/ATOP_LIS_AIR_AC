@@ -489,7 +489,11 @@ async function callAPI(body){
   const url=getUrl();
   if(!url)throw new Error('URL do Worker não configurada.');
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const d=await r.json();
+  const txt=await r.text();
+  let d;try{d=JSON.parse(txt);}catch(e){
+    if(r.status===524||/524/.test(txt))throw new Error('O Cloudflare cortou a ligação por demorar mais de 100 s (erro 524). Tente de novo; se persistir, o pedido é demasiado grande.');
+    throw new Error('Resposta inválida do Worker (HTTP '+r.status+'): '+txt.substring(0,120));
+  }
   if(d.error)throw new Error(d.error.message);
   return d;
 }
@@ -607,20 +611,15 @@ function doFile(f){
       for(let i=0;i<Math.min(pages.length,10);i++){if(/Insert the following/i.test(pages[i])){summaryEnd=i;break;}}
       const summary=pages.slice(0,summaryEnd+1).join('\n');
       indexPages(pages,summaryEnd);
-      // Páginas de substituição das secções referidas no sumário (o conteúdo novo, efectivo com esta emenda)
+      // Fase 1: extracção da lista a partir do sumário (chamada curta e rápida).
+      // Fase 2 (em segundo plano, após a lista aparecer): refinar cada descrição com as páginas
+      // de substituição da sua secção, em lotes pequenos — evita chamadas longas (timeout 524 do Cloudflare).
       const refs=summaryRefs(summary);
-      const CAP_SEC=10000,CAP_TOTAL=200000;
-      let ctx='',included=0,missing=[];
-      refs.forEach(([ad,sec])=>{
-        const t=amdtTextFor(ad,sec,CAP_SEC);
-        if(!t){missing.push(ad+' '+sec);return;}
-        if(ctx.length+t.length>CAP_TOTAL)return;
-        ctx+='\n\n===== '+ad+' '+sec+' — NEW PAGES EFFECTIVE WITH THIS AMENDMENT =====\n'+t;included++;
-      });
+      const withPages=refs.filter(([ad,sec])=>pagesForRef(ad,sec).length).length;
       lg('PDF: '+pages.length+' páginas, '+full.length+' chars. Sumário: '+summary.length+' chars ('+(summaryEnd+1)+' pág).');
-      lg('Secções referidas no sumário: '+refs.length+' — com páginas de substituição: '+included+(missing.length?' (sem texto, provavelmente cartas: '+missing.join(', ')+')':''));
-      lg('A enviar '+(summary.length+ctx.length)+' chars (~'+Math.round((summary.length+ctx.length)/4)+' tokens) para análise...');prog(35);
-      await runAI(summary+(ctx?'\n\n########## REPLACEMENT PAGES (new content) ##########'+ctx:''));
+      lg('Secções referidas no sumário: '+refs.length+' — com páginas de substituição indexadas: '+withPages+'.');
+      lg('Fase 1 — a enviar o sumário ('+summary.length+' chars, ~'+Math.round(summary.length/4)+' tokens) para extrair a lista...');prog(35);
+      await runAI(summary);
     }catch(e){lg('ERRO: '+e.message);setStatus('Erro: '+e.message);}
   })();
 }
@@ -631,7 +630,7 @@ function setStatus(m){document.getElementById('statusTxt').textContent=m;}
 // ── AI ANALYSIS ──
 async function runAI(pdfText){
   lg('A contactar API...');prog(40);
-  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nGRANULARITY RULES (critical — follow EXACTLY the same way every time):\n1. Create EXACTLY ONE item per changed subject per AIP section.\n2. NEVER merge two different navaids, waypoints, procedures or subjects into one item (e.g. LAR withdrawal and SGR withdrawal = 2 SEPARATE items, even if in the same section).\n3. NEVER merge changes from different sections into one item (e.g. ENR 6.01-5 and ENR 6.02-9 = 2 SEPARATE items).\n4. Each updated chart is its own item, with its own chart section number.\n5. Descriptions: factual, max 20 words, ALWAYS naming the specific identifier (navaid ID, waypoint name, chart number, ICAO code).\n6. PARTIAL vs TOTAL withdrawal: if a navaid facility is only PARTIALLY withdrawn (e.g. the VOR element removed but the DME retained), the description MUST state both what is withdrawn AND what remains (e.g. \"SGR VOR withdrawn; DME retained - record becomes DME-only\"). NEVER describe a partial withdrawal as a full withdrawal. Check the amendment text carefully for words like \"DME retained\", \"remains\", \"converted to\".\n\nDOCUMENT STRUCTURE: the document starts with the amendment SUMMARY (section 1 AIRAC changes, section 2 NON-AIRAC changes). The summary is the authoritative LIST of items: create one item per summary entry, never invent items that are not in the summary. After the marker \"REPLACEMENT PAGES\" come the NEW AIP pages that take effect with this amendment, grouped by section: use them ONLY to make each description precise and factual (exact identifiers, what is withdrawn vs retained, new values), not to add items.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number. This ALWAYS takes precedence: even if the item names a specific ICAO code (e.g. a new heliport LPLR listed in GEN 2.4), the ad field MUST be GEN — the ICAO code goes in the description only. The ad field reflects WHERE the change is published in the AIP (GEN / ENR / aerodrome chapter), NEVER the subject of the change.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
+  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nGRANULARITY RULES (critical — follow EXACTLY the same way every time):\n1. Create EXACTLY ONE item per changed subject per AIP section.\n2. NEVER merge two different navaids, waypoints, procedures or subjects into one item (e.g. LAR withdrawal and SGR withdrawal = 2 SEPARATE items, even if in the same section).\n3. NEVER merge changes from different sections into one item (e.g. ENR 6.01-5 and ENR 6.02-9 = 2 SEPARATE items).\n4. Each updated chart is its own item, with its own chart section number.\n5. Descriptions: factual, max 20 words, ALWAYS naming the specific identifier (navaid ID, waypoint name, chart number, ICAO code).\n6. PARTIAL vs TOTAL withdrawal: if a navaid facility is only PARTIALLY withdrawn (e.g. the VOR element removed but the DME retained), the description MUST state both what is withdrawn AND what remains (e.g. \"SGR VOR withdrawn; DME retained - record becomes DME-only\"). NEVER describe a partial withdrawal as a full withdrawal. Check the amendment text carefully for words like \"DME retained\", \"remains\", \"converted to\".\n\nDOCUMENT: the amendment SUMMARY (section 1 AIRAC changes, section 2 NON-AIRAC changes). The summary is the authoritative LIST of items: create one item per summary entry, never invent items that are not in the summary.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number. This ALWAYS takes precedence: even if the item names a specific ICAO code (e.g. a new heliport LPLR listed in GEN 2.4), the ad field MUST be GEN — the ICAO code goes in the description only. The ad field reflects WHERE the change is published in the AIP (GEN / ENR / aerodrome chapter), NEVER the subject of the change.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
 
   const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:8000,temperature:0,messages:[{role:'user',content:prompt}]});
   if(data.stop_reason==='max_tokens')lg('⚠ Resposta da IA truncada (limite de tokens) — a lista pode estar incompleta.');
@@ -711,7 +710,47 @@ async function runAI(pdfText){
   const withPages=changes.filter(c=>analyses[c.id].amdtText).length;
   lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa); '+withPages+' com páginas da emenda associadas.');prog(100);
   saveSession();
-  setTimeout(buildPanel2,500);
+  setTimeout(function(){buildPanel2();if(withPages)refineDescriptions();},500);
+}
+
+// ── FASE 2: refinar descrições com as páginas de substituição, em lotes pequenos ──
+let refineRunning=false;
+async function refineDescriptions(){
+  if(refineRunning)return;
+  const todo=changes.filter(c=>analyses[c.id]&&analyses[c.id].amdtText&&!c._refined);
+  if(!todo.length)return;
+  refineRunning=true;
+  const BATCH=6,CAP=4000;
+  const batches=[];for(let i=0;i<todo.length;i+=BATCH)batches.push(todo.slice(i,i+BATCH));
+  const strip=document.getElementById('p2info');
+  const base=strip.innerHTML;
+  let done=0,updated=0;
+  for(const b of batches){
+    strip.innerHTML=base+'<span style="margin-left:12px;background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;white-space:nowrap"><span class="spin"></span>A refinar descrições com o texto da emenda — lote '+(done+1)+' de '+batches.length+'</span>';
+    try{
+      const items=b.map(c=>'--- ITEM '+c.id+' | '+c.ad+' '+c.section+'\nCURRENT DESCRIPTION: '+c.description+'\nNEW AIP PAGES FOR THIS SECTION:\n'+analyses[c.id].amdtText.substring(0,CAP)).join('\n\n');
+      const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:1500,temperature:0,
+        messages:[{role:'user',content:'You are an ATS analyst at NAV Portugal. For each ITEM below, rewrite CURRENT DESCRIPTION so it is precise and factual, using ONLY the NEW AIP PAGES given for that item: name the exact identifiers (navaid ID, waypoint, chart number, ICAO code), exact new values when they appear (coordinates, frequencies, hours, altitudes), and for navaid withdrawals state what is withdrawn AND what is retained (e.g. "SGR VOR withdrawn; DME retained"). Keep the same subject and scope as the current description: do NOT merge items, do NOT add new subjects, do NOT drop the item. Max 30 words each, English, ASCII only. If the pages do not add information, return the current description unchanged.\n\nReturn ONLY a JSON array: [{"id":"<id>","description":"..."}]\n\n'+items}]});
+      const raw=data.content.map(x=>x.text||'').join('');
+      const jm=raw.match(/\[[\s\S]*\]/);
+      if(jm){
+        let arr=[];try{arr=JSON.parse(jm[0]);}catch(e){try{arr=JSON.parse(jm[0].replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/,\s*([}\]])/g,'$1'));}catch(e2){}}
+        arr.forEach(r=>{
+          const c=changes.find(x=>x.id===String(r.id));
+          if(c&&r.description&&r.description.length>5){
+            if(r.description.trim()!==c.description.trim()){c._origDescription=c.description;c.description=r.description.trim();updated++;}
+            c._refined=true;
+          }
+        });
+      }
+      b.forEach(c=>{c._refined=true;});
+    }catch(e){/* lote falhado: fica a descrição do sumário */}
+    done++;
+    filterTable();saveSession();
+  }
+  refineRunning=false;
+  strip.innerHTML=base+'<span style="margin-left:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;white-space:nowrap">✓ Descrições refinadas com o texto da emenda ('+updated+' actualizadas)</span>';
+  setStatus('Refinamento concluído: '+updated+' descrição(ões) melhoradas com as páginas da emenda.');
 }
 
 function guessSystems(c){
