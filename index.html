@@ -116,6 +116,22 @@ header p{font-size:11px;color:rgba(212,165,165,0.8);margin-top:1px}
 .imp-LOW::before{background:#16a34a}
 .tag{display:inline-flex;align-items:center;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600;margin:1px;background:#faeae6;color:#7a3d5c;border:1px solid #dfc8b8;letter-spacing:.3px}
 
+/* ── COMPARAÇÃO ── */
+.cmp-modal{background:var(--s1);border:1px solid var(--border);border-radius:14px;width:100%;max-width:1500px;height:92vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.cmp-top{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cmp-top select{background:var(--s1);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text);max-width:560px}
+.cmp-legend{font-size:11px;color:var(--muted);display:flex;gap:12px;align-items:center;margin-left:auto}
+.cmp-cols{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0;min-height:0}
+.cmp-col{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border)}
+.cmp-col:last-child{border-right:none}
+.cmp-col-hdr{padding:8px 14px;background:var(--s2);border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--nav);display:flex;align-items:center;gap:8px}
+.cmp-col-hdr a{font-size:10px;font-weight:600;color:var(--nav3);text-decoration:none;border:1px solid var(--border2);border-radius:5px;padding:1px 7px;margin-left:auto}
+.cmp-body{flex:1;overflow-y:auto;padding:12px 16px;font-family:'Cascadia Code','Consolas',monospace;font-size:11px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.cmp-page{color:var(--muted);font-size:10px;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px dashed var(--border);margin:14px 0 6px;padding-bottom:2px}
+.cmp-page:first-child{margin-top:0}
+.d-add{background:#fff3a0;color:#4a3a00;border-radius:2px;padding:0 1px}
+.d-del{background:#ffd9d9;color:#8a1c1c;text-decoration:line-through;border-radius:2px;padding:0 1px}
+.cmp-empty{color:var(--muted);font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;padding:20px}
 /* ── BUTTONS ── */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;letter-spacing:.2px}
 .btn-primary{background:linear-gradient(135deg,var(--nav),var(--nav2));color:#fff;box-shadow:0 2px 8px rgba(0,71,171,0.25)}
@@ -238,6 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
     <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.4</p>
   </div>
   <div class="header-right">
+    <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
     <button id="btnExportSess" onclick="exportSession()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="Descarregar esta sessão como ficheiro JSON (para arquivo ou para retomar noutro computador)">⬇ Exportar sessão</button>
     <button onclick="openHelp()" style="padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600;transition:all .2s" onmouseover="this.style.background='rgba(212,165,165,0.3)'" onmouseout="this.style.background='rgba(212,165,165,0.15)'">? Ajuda</button>
     <div class="hbadge" id="amdtBadge">Nenhum AIRAC carregado</div>
@@ -387,6 +404,23 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   </div>
 </div>
 
+<div class="modal-bg" id="cmpBg" onclick="if(event.target===this)closeCompare()">
+  <div class="cmp-modal">
+    <div class="cmp-top">
+      <strong style="font-size:14px;color:var(--nav)">⇄ Comparação de alterações</strong>
+      <button class="btn btn-secondary btn-sm" onclick="cmpNav(-1)">‹</button>
+      <select id="cmpSel" onchange="renderCompare(this.value)"></select>
+      <button class="btn btn-secondary btn-sm" onclick="cmpNav(1)">›</button>
+      <div class="cmp-legend"><span><span class="d-add">acrescentado</span> na emenda</span><span><span class="d-del">retirado</span> do eAIP</span></div>
+      <button class="modal-close" onclick="closeCompare()" title="Fechar">✕</button>
+    </div>
+    <div class="cmp-cols">
+      <div class="cmp-col"><div class="cmp-col-hdr">📘 eAIP em vigor (antes) <a id="cmpLinkL" href="#" target="_blank">↗ abrir PDF</a></div><div class="cmp-body" id="cmpLeft"></div></div>
+      <div class="cmp-col"><div class="cmp-col-hdr">📙 Emenda (depois) <span id="cmpAmdtNo" style="font-weight:400;color:var(--muted)"></span><span id="cmpPages" style="font-weight:400;color:var(--muted);font-size:10px;margin-left:6px"></span></div><div class="cmp-body" id="cmpRight"></div></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="helpBg" onclick="if(event.target===this)closeHelp()">
   <div class="modal" style="max-width:780px">
     <div class="modal-hdr">
@@ -463,7 +497,7 @@ const SYSTEMS=SYSTEMS_DEF.map(s=>s.name);
 const AD_ORG={'LPPT':['TWRLIS','CCLIS'],'LPPR':['TWRPOR'],'LPCS':['TWRCAS'],'LPFR':['TWRFAR'],'LPMA':['TWRFUN'],'LPPS':['TWRSAN'],'ENR':['CCLIS'],'LPPO':['CCLIS'],'GEN':['CCLIS','TWRLIS']};
 const EAIP='https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/pdf/';
 
-let changes=[],analyses={},meta={},curId=null,eaipCache={};
+let changes=[],analyses={},meta={},curId=null,eaipCache={},eaipPagesCache={};
 
 // ── CONFIG ──
 function getUrl(){return localStorage.getItem('airac_wurl')||'https://curly-sound-5d5e.mendreas.workers.dev';}
@@ -546,7 +580,7 @@ function indexPages(pages,summaryEnd){
   for(let i=summaryEnd+1;i<pages.length;i++){
     const p=pages[i];if(p.trim().length<400)continue; // cartas / páginas em branco
     const k=pageKey(p);if(!k||/^GEN 0\./.test(k))continue; // GEN 0.x = registo/checklist, sem interesse
-    amdtPages.push({i:i+1,key:k,text:p});
+    amdtPages.push({i:i+1,key:k,hdr:PAGE_HDR.exec(p)[0].replace(/\s+/g,' ').trim(),text:p});
   }
 }
 // Referências (AD, secção) no sumário da emenda — secções 1 e 2
@@ -591,7 +625,8 @@ function amdtPanelHtml(id){
     '<strong style="color:var(--nav)">📄 Texto novo da emenda — '+esc(c.ad)+' '+esc(c.section)+'</strong>'+
     (ps.length?'<span>páginas '+ps.map(p=>p.i).join(', ')+' do PDF</span>':'')+
     (c._origDescription?'<span title="Descrição original do sumário: '+esc(c._origDescription)+'" style="border:1px solid #fbbf24;background:#fff8e1;color:#92400e;border-radius:4px;padding:0 6px">descrição refinada pela IA</span>':'')+
-    '<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="event.stopPropagation();openModal(\''+id+'\')">Analisar / comparar com eAIP</button></div>';
+    '<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="event.stopPropagation();openCompare(\''+id+'\')">⇄ Comparar com eAIP</button>'+
+    '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openModal(\''+id+'\')">Analisar</button></div>';
   const body=a&&a.amdtText
     ?'<pre style="white-space:pre-wrap;font-family:Cascadia Code,Consolas,monospace;font-size:11px;line-height:1.6;max-height:260px;overflow-y:auto;margin:0;color:var(--text)">'+esc(a.amdtText)+'</pre>'
     :'<div style="font-size:12px;color:var(--muted)">Sem páginas de substituição com texto para esta secção — normalmente é uma carta (gráfico) ou a secção não foi encontrada na emenda. Use "Analisar" para ver o eAIP.</div>';
@@ -822,6 +857,7 @@ function buildPanel2(){
   badge.textContent='AIRAC '+meta.number;
   badge.classList.add('loaded');
   document.getElementById('btnReset').style.display='inline-flex';
+  document.getElementById('btnCompare').style.display=cmpItems().length?'inline-flex':'none';
   const ads=[...new Set(changes.map(c=>c.ad))].sort();
   const fa=document.getElementById('filtAd');
   fa.innerHTML='<option value="">Todos os AD</option>';
@@ -939,15 +975,16 @@ async function fetchEaipText(id){
   const c=changes.find(x=>x.id===id),a=analyses[id];
   if(a.eaipText)return a.eaipText;
   const url=buildEaipUrl(c.ad,c.section);if(!url)return '';
-  if(eaipCache[url]){a.eaipText=eaipCache[url];return a.eaipText;}
+  if(eaipCache[url]){a.eaipText=eaipCache[url];a.eaipUrl=url;return a.eaipText;}
   const workerResp=await fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_fetchUrl:url})});
   const workerData=await workerResp.json();
   if(workerData.error)throw new Error(workerData.error.message);
   const binary=atob(workerData.base64);
   const bytes=new Uint8Array(binary.length);
   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-  const txt=await pdfToText({data:bytes.buffer},20);
-  eaipCache[url]=txt;a.eaipText=txt;
+  const pgs=await pdfToPages({data:bytes.buffer},80);
+  const txt=pgs.join('\n');
+  eaipPagesCache[url]=pgs;eaipCache[url]=txt;a.eaipText=txt;a.eaipUrl=url;
   return txt;
 }
 async function loadEaip(id,url){
@@ -1404,6 +1441,78 @@ function genPDF(){
   w.document.close();setStatus('PDF aberto para impressão.');
 }
 
+// ── COMPARAÇÃO DE ALTERAÇÕES (eAIP em vigor vs emenda, por página) ──
+let cmpId=null;
+function cmpItems(){return changes.filter(c=>analyses[c.id]&&analyses[c.id].amdtText);}
+function openCompare(id){
+  const items=cmpItems();
+  if(!items.length){alert('Nenhuma alteração com páginas de texto na emenda para comparar.');return;}
+  const sel=document.getElementById('cmpSel');
+  sel.innerHTML=items.map(c=>'<option value="'+c.id+'">'+esc(c.ad+' '+c.section+' — '+c.description.substring(0,70))+'</option>').join('');
+  document.getElementById('cmpBg').classList.add('open');
+  renderCompare(id&&items.some(c=>c.id===id)?id:items[0].id);
+}
+function closeCompare(){document.getElementById('cmpBg').classList.remove('open');}
+function cmpNav(d){
+  const items=cmpItems(),i=items.findIndex(c=>c.id===cmpId);
+  const n=items[(i+d+items.length)%items.length];if(n)renderCompare(n.id);
+}
+// Diff por palavras (LCS) — devolve HTML dos dois lados
+function tokenize(t){return t.split(/(\s+)/).filter(x=>x.length);}
+function diffWords(aText,bText,cap){
+  const A=tokenize(aText).slice(0,cap||2500),B=tokenize(bText).slice(0,cap||2500);
+  const n=A.length,m=B.length;
+  // LCS sobre tokens não-espaço (espaços seguem o token anterior)
+  const dp=new Array(n+1);for(let i=0;i<=n;i++)dp[i]=new Uint16Array(m+1);
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  let i=0,j=0,L=[],R=[];
+  const push=(arr,cls,tok)=>{if(/^\s+$/.test(tok)){arr.push(esc(tok));return;}arr.push(cls?'<span class="'+cls+'">'+esc(tok)+'</span>':esc(tok));};
+  while(i<n&&j<m){
+    if(A[i]===B[j]){push(L,'',A[i]);push(R,'',B[j]);i++;j++;}
+    else if(dp[i+1][j]>=dp[i][j+1]){push(L,'d-del',A[i]);i++;}
+    else{push(R,'d-add',B[j]);j++;}
+  }
+  while(i<n){push(L,'d-del',A[i]);i++;}
+  while(j<m){push(R,'d-add',B[j]);j++;}
+  return {left:L.join(''),right:R.join(''),truncated:tokenize(aText).length>(cap||2500)||tokenize(bText).length>(cap||2500)};
+}
+function hdrOf(p){const m=PAGE_HDR.exec(p);return m?m[0].replace(/\s+/g,' ').trim():null;}
+async function renderCompare(id){
+  cmpId=id;document.getElementById('cmpSel').value=id;
+  const c=changes.find(x=>x.id===id),a=analyses[id];
+  const L=document.getElementById('cmpLeft'),R=document.getElementById('cmpRight');
+  document.getElementById('cmpAmdtNo').textContent='AIRAC '+(meta.number||'');
+  const aPages=pagesForRef(c.ad,c.section);
+  document.getElementById('cmpPages').textContent=aPages.length?'pág. '+aPages.map(p=>p.i).join(', ')+' do PDF da emenda':'';
+  const url=buildEaipUrl(c.ad,c.section);
+  const linkL=document.getElementById('cmpLinkL');if(url){linkL.href=url;linkL.style.display='';}else linkL.style.display='none';
+  L.innerHTML='<div class="cmp-empty"><span class="spin"></span> A carregar eAIP em vigor...</div>';
+  R.innerHTML=aPages.map(p=>'<div class="cmp-page">'+esc(p.hdr)+'</div>'+esc(p.text)).join('');
+  let ePages=[];
+  try{await fetchEaipText(id);ePages=eaipPagesCache[url]||[];}
+  catch(e){L.innerHTML='<div class="cmp-empty">Não foi possível carregar o eAIP: '+esc(e.message)+'</div>';return;}
+  if(cmpId!==id)return; // utilizador mudou de item entretanto
+  // Alinhar por cabeçalho de página ("ENR 4.1 - 3"); se não houver correspondência, usar as páginas da mesma secção
+  const eByHdr={};ePages.forEach(p=>{const h=hdrOf(p);if(h)eByHdr[h]=p;});
+  let lh=[],rh=[],matched=0;
+  aPages.forEach(p=>{
+    const e=eByHdr[p.hdr];
+    rh.push('<div class="cmp-page">'+esc(p.hdr)+'</div>');
+    lh.push('<div class="cmp-page">'+esc(e?p.hdr:p.hdr+' — sem página correspondente no eAIP (página nova?)')+'</div>');
+    if(e){matched++;const d=diffWords(e,p.text);lh.push(d.left);rh.push(d.right);if(d.truncated)rh.push('<div class="cmp-empty">[comparação truncada — página muito longa]</div>');}
+    else{rh.push('<span class="d-add">'+esc(p.text)+'</span>');}
+  });
+  if(!matched&&ePages.length){
+    // fallback: página do eAIP com a mesma secção no texto
+    const secRx=new RegExp((c.ad==='GEN'||c.ad==='ENR')?c.ad+'\\s+'+c.section.replace(/\./g,'\\.')+'\\b':'AD\\s+'+(c.section||'2').replace(/\./g,'\\.')+'\\b');
+    const cand=ePages.filter(p=>secRx.test(p));
+    if(cand.length){lh=['<div class="cmp-page">eAIP — páginas da secção '+esc(c.ad+' '+c.section)+' (alinhamento por secção, não por página)</div>'];rh=['<div class="cmp-page">emenda — '+esc(c.ad+' '+c.section)+'</div>'];const d=diffWords(cand.join('\n'),aPages.map(p=>p.text).join('\n'),4000);lh.push(d.left);rh.push(d.right);}
+  }
+  L.innerHTML=lh.join('')||'<div class="cmp-empty">Sem texto do eAIP para esta secção.</div>';
+  R.innerHTML=rh.join('');
+}
+document.addEventListener('keydown',e=>{if(document.getElementById('cmpBg').classList.contains('open')){if(e.key==='ArrowRight')cmpNav(1);if(e.key==='ArrowLeft')cmpNav(-1);if(e.key==='Escape')closeCompare();}});
+
 // ── AJUDA ──
 const HELP_CATS=[
   ['SID','Procedimento de partida (Standard Instrument Departure)','NAV-DB'],
@@ -1462,6 +1571,8 @@ function openHelp(){
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">📄 O que a IA lê</h4>';
   h+='<p style="font-size:12px;margin-bottom:6px">Na extracção, a IA recebe o <strong>sumário</strong> da emenda (secções 1 e 2) e as <strong>páginas de substituição</strong> das secções nele referidas (até 10.000 caracteres por secção, 200.000 no total). As páginas GEN 0.x (registos e checklist) e as cartas sem texto são ignoradas.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No detalhe de cada alteração, a aba <strong>Publicado agora</strong> mostra o eAIP em vigor, <strong>Novo texto</strong> mostra as páginas da emenda para essa secção e <strong>O que mudou</strong> pede à IA a comparação antes→depois. A descrição para o ATOPLIS usa os dois textos.</p>';
+  h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">⇄ Comparação de alterações</h4>';
+  h+='<p style="font-size:12px;margin-bottom:6px">O botão <strong>⇄ Comparação de alterações</strong> abre, lado a lado, a página do eAIP em vigor (esquerda) e a página correspondente da emenda (direita), alinhadas pelo cabeçalho (ex. ENR 4.1 - 3). O que a emenda acrescenta fica <span class="d-add">a amarelo</span>; o que desaparece do eAIP fica <span class="d-del">riscado a vermelho</span>. Use ‹ › ou as setas do teclado para percorrer as alterações. Os links abrem os PDFs reais.</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">💾 Sessões</h4>';
   h+='<p style="font-size:12px;margin-bottom:6px">O trabalho é guardado automaticamente neste browser, por número de AIRAC: selecções, órgãos, sistemas, descrições e remoções. Pode fechar o separador e retomar no passo 1. <strong>⬇ Exportar sessão</strong> descarrega um JSON para arquivo ou para continuar noutro computador (<strong>⬆ Importar JSON</strong>).</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, <strong>✨ Gerar N descrições</strong> cria com IA as descrições de todos os itens que ainda não a têm, uma chamada por item.</p>';
@@ -1590,6 +1701,7 @@ function resetAll(){
   badge.classList.remove('loaded');
   document.getElementById('btnReset').style.display='none';
   document.getElementById('btnExportSess').style.display='none';
+  document.getElementById('btnCompare').style.display='none';
   amdtPages=[];
   goStep(1);renderSessions();setStatus('Pronto.');
 }
