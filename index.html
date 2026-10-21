@@ -235,9 +235,10 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.3</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.4</p>
   </div>
   <div class="header-right">
+    <button id="btnExportSess" onclick="exportSession()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="Descarregar esta sessão como ficheiro JSON (para arquivo ou para retomar noutro computador)">⬇ Exportar sessão</button>
     <button onclick="openHelp()" style="padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600;transition:all .2s" onmouseover="this.style.background='rgba(212,165,165,0.3)'" onmouseout="this.style.background='rgba(212,165,165,0.15)'">? Ajuda</button>
     <div class="hbadge" id="amdtBadge">Nenhum AIRAC carregado</div>
     <button id="btnReset" class="btn btn-danger btn-sm" onclick="resetAll()">✕ Limpar</button>
@@ -276,6 +277,15 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
     </button>
   </div>
   <input type="file" id="fi" accept=".pdf" style="display:none">
+  <input type="file" id="fiSess" accept=".json" style="display:none" onchange="importSessionFile(this.files[0]);this.value=''">
+  <div id="sessWrap" style="display:none;margin-top:20px;background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <strong style="font-size:13px;color:var(--nav)">💾 Sessões guardadas neste browser</strong>
+      <span style="font-size:11px;color:var(--muted)">— o trabalho é guardado automaticamente; pode fechar o separador e retomar mais tarde</span>
+      <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="document.getElementById('fiSess').click()">⬆ Importar JSON</button>
+    </div>
+    <div id="sessList"></div>
+  </div>
   <div id="progWrap">
     <p id="progLabel">A analisar PDF...</p>
     <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
@@ -394,7 +404,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.3
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.4
   </div>
 </div>
 
@@ -450,7 +460,7 @@ const SYSTEMS_DEF=[
    secs:['AD'],adScoped:true}
 ];
 const SYSTEMS=SYSTEMS_DEF.map(s=>s.name);
-const AD_ORG={'LPPT':['TWRLIS','CCLIS'],'LPPR':['TWRPOR'],'LPCS':['TWRCAS'],'LPFR':['TWRFAR'],'LPMA':['TWRFUN'],'LPPS':['TWRSAN'],'ENR':['CCLIS'],'LPPO':['CCLIS']};
+const AD_ORG={'LPPT':['TWRLIS','CCLIS'],'LPPR':['TWRPOR'],'LPCS':['TWRCAS'],'LPFR':['TWRFAR'],'LPMA':['TWRFUN'],'LPPS':['TWRSAN'],'ENR':['CCLIS'],'LPPO':['CCLIS'],'GEN':['CCLIS','TWRLIS']};
 const EAIP='https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/pdf/';
 
 let changes=[],analyses={},meta={},curId=null,eaipCache={};
@@ -495,17 +505,84 @@ async function loadPdfJs(){
   window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
-async function pdfToText(source,maxPages){
+async function pdfToPages(source,maxPages,onPage){
   await loadPdfJs();
   const pdf=await window.pdfjsLib.getDocument(source).promise;
-  let txt='';
-  const n=Math.min(pdf.numPages,maxPages||999);
+  const pages=[];
+  const n=Math.min(pdf.numPages,maxPages||9999);
   for(let i=1;i<=n;i++){
     const pg=await pdf.getPage(i);
     const ct=await pg.getTextContent();
-    txt+=ct.items.map(x=>x.str).join(' ')+'\n';
+    // Reconstruir quebras de linha a partir da posição vertical dos itens (necessário para ler o sumário linha a linha)
+    let lastY=null,line=[],lines=[];
+    ct.items.forEach(it=>{
+      const y=it.transform?Math.round(it.transform[5]):0;
+      if(lastY!==null&&Math.abs(y-lastY)>2){lines.push(line.join(' '));line=[];}
+      if(it.str&&it.str.trim())line.push(it.str);
+      lastY=y;
+    });
+    if(line.length)lines.push(line.join(' '));
+    pages.push(lines.join('\n'));
+    if(onPage&&i%40===0)onPage(i,n);
   }
-  return txt;
+  return pages;
+}
+async function pdfToText(source,maxPages){return (await pdfToPages(source,maxPages)).join('\n');}
+
+// ── PÁGINAS DA EMENDA POR SECÇÃO ──
+// Cabeçalho de cada página de substituição: "GEN 2.4 - 1", "ENR 4.1 - 3", "LPFL AD 2 - 8", "LPHR AD 2.24.10 - 9"
+const PAGE_HDR=/\b(GEN|ENR)\s+(\d+)\.(\d+)\s*-\s*\d+|\b(LP[A-Z]{2})\s+AD\s+2(?:\.(\d+(?:\.\d+)?))?\s*-\s*\d+/;
+let amdtPages=[];   // [{i,key,text}] páginas de substituição com cabeçalho reconhecido
+function pageKey(p){
+  const h=PAGE_HDR.exec(p);if(!h)return null;
+  return h[1]?h[1]+' '+h[2]+'.'+h[3]:h[4]+' AD 2'+(h[5]?'.'+h[5]:'');
+}
+function indexPages(pages,summaryEnd){
+  amdtPages=[];
+  for(let i=summaryEnd+1;i<pages.length;i++){
+    const p=pages[i];if(p.trim().length<400)continue; // cartas / páginas em branco
+    const k=pageKey(p);if(!k||/^GEN 0\./.test(k))continue; // GEN 0.x = registo/checklist, sem interesse
+    amdtPages.push({i:i+1,key:k,text:p});
+  }
+}
+// Referências (AD, secção) no sumário da emenda — secções 1 e 2
+function summaryRefs(s){
+  const refs=new Map();
+  // Secções 0.x (registo de emendas, checklist, índice) só aparecem na lista Insert/Remove — sem interesse
+  const add=(ad,sec)=>{if(!/^0\./.test(sec))refs.set(ad+'|'+sec,[ad,sec]);};
+  let m;const rx=/\b(LP[A-Z]{2})\s+(\d+\.\d+(?:\.\d+)?)/g;
+  while((m=rx.exec(s))!==null)add(m[1],m[2]);
+  let cur=null;
+  s.split('\n').forEach(line=>{
+    const l=line.trim();
+    if(/^(GEN|ENR)$/.test(l)){cur=l;return;}
+    if(/^AD$/.test(l)){cur=null;return;}
+    let m2=/^(ENR|GEN)\s+(\d+\.\d+)/.exec(l);if(m2){add(m2[1],m2[2]);return;}
+    m2=/^(\d+\.\d+)/.exec(l);if(m2&&cur)add(cur,m2[1]);
+  });
+  return [...refs.values()];
+}
+function pagesForRef(ad,sec){
+  ad=(ad||'').toUpperCase();sec=(sec||'').trim();
+  if(ad==='GEN'||ad==='ENR'){
+    const m=/(\d+)\.(\d+)/.exec(sec);if(!m)return [];
+    return amdtPages.filter(p=>p.key===ad+' '+m[1]+'.'+m[2]);
+  }
+  if(!/^LP[A-Z]{2}$/.test(ad))return [];
+  if(/^2\.24\./.test(sec)){
+    const chart=sec.split('-')[0].split('.').slice(0,3).join('.');
+    return amdtPages.filter(p=>p.key===ad+' AD '+chart);
+  }
+  const main=amdtPages.filter(p=>p.key===ad+' AD 2');
+  if(!sec)return main;
+  const rxSec=new RegExp('AD\\s+'+sec.replace(/\./g,'\\.')+'\\b');
+  const hit=main.filter(p=>rxSec.test(p.text));
+  return hit.length?hit:[];
+}
+function amdtTextFor(ad,sec,cap){
+  const ps=pagesForRef(ad,sec);if(!ps.length)return '';
+  let t=ps.map(p=>'[pág. '+p.i+' — '+p.key+']\n'+p.text).join('\n\n');
+  return t.length>(cap||8000)?t.substring(0,cap||8000)+'\n[...]':t;
 }
 
 // ── UPLOAD ──
@@ -522,14 +599,28 @@ function doFile(f){
   lg('A ler: '+f.name);prog(10);
   (async()=>{
     try{
-      lg('A extrair texto completo do PDF...');prog(20);
-      const txt=await pdfToText({data:await f.arrayBuffer()},9999);
-      // Poupança de créditos: a lista de alterações está nas primeiras páginas do amendment;
-      // as páginas de substituição não são necessárias para a extração.
-      const MAX_CHARS=60000;
-      const sent=txt.length>MAX_CHARS?txt.substring(0,MAX_CHARS):txt;
-      lg('Texto extraído: '+txt.length+' chars. A enviar '+sent.length+' chars (~'+Math.round(sent.length/4)+' tokens'+(txt.length>MAX_CHARS?' — apenas as primeiras páginas, onde está o resumo das alterações':'')+')...');prog(35);
-      await runAI(sent);
+      lg('A extrair texto completo do PDF...');prog(15);
+      const pages=await pdfToPages({data:await f.arrayBuffer()},9999,(i,n)=>{lg('  página '+i+' de '+n+'...');prog(15+Math.round(15*i/n));});
+      const full=pages.join('\n');
+      // Sumário = páginas até à lista "Insert / remove the pages" (secções 1, 2 e 3 do amendment)
+      let summaryEnd=Math.min(pages.length-1,5);
+      for(let i=0;i<Math.min(pages.length,10);i++){if(/Insert the following/i.test(pages[i])){summaryEnd=i;break;}}
+      const summary=pages.slice(0,summaryEnd+1).join('\n');
+      indexPages(pages,summaryEnd);
+      // Páginas de substituição das secções referidas no sumário (o conteúdo novo, efectivo com esta emenda)
+      const refs=summaryRefs(summary);
+      const CAP_SEC=10000,CAP_TOTAL=200000;
+      let ctx='',included=0,missing=[];
+      refs.forEach(([ad,sec])=>{
+        const t=amdtTextFor(ad,sec,CAP_SEC);
+        if(!t){missing.push(ad+' '+sec);return;}
+        if(ctx.length+t.length>CAP_TOTAL)return;
+        ctx+='\n\n===== '+ad+' '+sec+' — NEW PAGES EFFECTIVE WITH THIS AMENDMENT =====\n'+t;included++;
+      });
+      lg('PDF: '+pages.length+' páginas, '+full.length+' chars. Sumário: '+summary.length+' chars ('+(summaryEnd+1)+' pág).');
+      lg('Secções referidas no sumário: '+refs.length+' — com páginas de substituição: '+included+(missing.length?' (sem texto, provavelmente cartas: '+missing.join(', ')+')':''));
+      lg('A enviar '+(summary.length+ctx.length)+' chars (~'+Math.round((summary.length+ctx.length)/4)+' tokens) para análise...');prog(35);
+      await runAI(summary+(ctx?'\n\n########## REPLACEMENT PAGES (new content) ##########'+ctx:''));
     }catch(e){lg('ERRO: '+e.message);setStatus('Erro: '+e.message);}
   })();
 }
@@ -540,9 +631,10 @@ function setStatus(m){document.getElementById('statusTxt').textContent=m;}
 // ── AI ANALYSIS ──
 async function runAI(pdfText){
   lg('A contactar API...');prog(40);
-  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nGRANULARITY RULES (critical — follow EXACTLY the same way every time):\n1. Create EXACTLY ONE item per changed subject per AIP section.\n2. NEVER merge two different navaids, waypoints, procedures or subjects into one item (e.g. LAR withdrawal and SGR withdrawal = 2 SEPARATE items, even if in the same section).\n3. NEVER merge changes from different sections into one item (e.g. ENR 6.01-5 and ENR 6.02-9 = 2 SEPARATE items).\n4. Each updated chart is its own item, with its own chart section number.\n5. Descriptions: factual, max 20 words, ALWAYS naming the specific identifier (navaid ID, waypoint name, chart number, ICAO code).\n6. PARTIAL vs TOTAL withdrawal: if a navaid facility is only PARTIALLY withdrawn (e.g. the VOR element removed but the DME retained), the description MUST state both what is withdrawn AND what remains (e.g. \"SGR VOR withdrawn; DME retained - record becomes DME-only\"). NEVER describe a partial withdrawal as a full withdrawal. Check the amendment text carefully for words like \"DME retained\", \"remains\", \"converted to\".\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number. This ALWAYS takes precedence: even if the item names a specific ICAO code (e.g. a new heliport LPLR listed in GEN 2.4), the ad field MUST be GEN — the ICAO code goes in the description only. The ad field reflects WHERE the change is published in the AIP (GEN / ENR / aerodrome chapter), NEVER the subject of the change.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
+  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nGRANULARITY RULES (critical — follow EXACTLY the same way every time):\n1. Create EXACTLY ONE item per changed subject per AIP section.\n2. NEVER merge two different navaids, waypoints, procedures or subjects into one item (e.g. LAR withdrawal and SGR withdrawal = 2 SEPARATE items, even if in the same section).\n3. NEVER merge changes from different sections into one item (e.g. ENR 6.01-5 and ENR 6.02-9 = 2 SEPARATE items).\n4. Each updated chart is its own item, with its own chart section number.\n5. Descriptions: factual, max 20 words, ALWAYS naming the specific identifier (navaid ID, waypoint name, chart number, ICAO code).\n6. PARTIAL vs TOTAL withdrawal: if a navaid facility is only PARTIALLY withdrawn (e.g. the VOR element removed but the DME retained), the description MUST state both what is withdrawn AND what remains (e.g. \"SGR VOR withdrawn; DME retained - record becomes DME-only\"). NEVER describe a partial withdrawal as a full withdrawal. Check the amendment text carefully for words like \"DME retained\", \"remains\", \"converted to\".\n\nDOCUMENT STRUCTURE: the document starts with the amendment SUMMARY (section 1 AIRAC changes, section 2 NON-AIRAC changes). The summary is the authoritative LIST of items: create one item per summary entry, never invent items that are not in the summary. After the marker \"REPLACEMENT PAGES\" come the NEW AIP pages that take effect with this amendment, grouped by section: use them ONLY to make each description precise and factual (exact identifiers, what is withdrawn vs retained, new values), not to add items.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number. This ALWAYS takes precedence: even if the item names a specific ICAO code (e.g. a new heliport LPLR listed in GEN 2.4), the ad field MUST be GEN — the ICAO code goes in the description only. The ad field reflects WHERE the change is published in the AIP (GEN / ENR / aerodrome chapter), NEVER the subject of the change.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
 
-  const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:4000,temperature:0,messages:[{role:'user',content:prompt}]});
+  const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:8000,temperature:0,messages:[{role:'user',content:prompt}]});
+  if(data.stop_reason==='max_tokens')lg('⚠ Resposta da IA truncada (limite de tokens) — a lista pode estar incompleta.');
   lg('Resposta recebida. A processar...');prog(70);
   const raw=data.content.map(c=>c.text||'').join('');
 
@@ -611,10 +703,14 @@ async function runAI(pdfText){
     const _allOrg=[...new Set(_sd.flatMap(s=>s.organs))];
     analyses[c.id]={organs:_allOrg.length?_allOrg:(AD_ORG[c.ad]||[]),
       systems:_sd.map(s=>s.name),systemsDetail:_sd,
-      desc:'',eaipText:'',diffText:'',selected:_isFir&&_sd.length>0};
+      desc:'',eaipText:'',diffText:'',
+      amdtText:amdtTextFor(c.ad,c.section,8000), // páginas novas da emenda para esta secção
+      selected:_isFir&&_sd.length>0};
   });
 
-  lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa).');prog(100);
+  const withPages=changes.filter(c=>analyses[c.id].amdtText).length;
+  lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa); '+withPages+' com páginas da emenda associadas.');prog(100);
+  saveSession();
   setTimeout(buildPanel2,500);
 }
 
@@ -722,9 +818,9 @@ function filterTable(){
     (!sys||(analyses[c.id]&&analyses[c.id].systems.includes(sys)))
   ));
 }
-function selAll(v){changes.forEach(c=>analyses[c.id].selected=v);document.querySelectorAll('.rc').forEach(e=>e.checked=v);document.getElementById('masterChk').checked=v;updBtn();}
+function selAll(v){changes.forEach(c=>analyses[c.id].selected=v);document.querySelectorAll('.rc').forEach(e=>e.checked=v);document.getElementById('masterChk').checked=v;updBtn();saveSession();}
 function toggleAll(v){selAll(v);}
-function onChk(id,v){analyses[id].selected=v;updBtn();}
+function onChk(id,v){analyses[id].selected=v;updBtn();saveSession();}
 function updBtn(){const n=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected).length;const b=document.getElementById('btnProceed');b.disabled=n===0;b.textContent=n?'Analisar impacto ('+n+') →':'Analisar impacto →';}
 
 // ── MODAL ──
@@ -745,10 +841,12 @@ function openModal(id){
     '<div class="slbl">eAIP actual '+pdfLink+'</div>'+
     '<div class="eaip-panel">'+
       '<div class="eaip-tabs">'+
-        '<div class="eaip-tab active" onclick="showTab(\'raw\',this)">Texto publicado</div>'+
+        '<div class="eaip-tab active" onclick="showTab(\'raw\',this)">Publicado agora (eAIP)</div>'+
+        '<div class="eaip-tab" onclick="showTab(\'amdt\',this)">Novo texto (emenda)'+(a.amdtText?'':' — n/d')+'</div>'+
         '<div class="eaip-tab" onclick="showTab(\'diff\',this)">O que mudou (IA)</div>'+
       '</div>'+
       '<div class="eaip-content dim" id="eaipRaw">A carregar eAIP...</div>'+
+      '<div class="eaip-content" id="eaipAmdt" style="display:none">'+(a.amdtText?esc(a.amdtText.substring(0,6000))+(a.amdtText.length>6000?'\n\n[truncado]':''):'Sem páginas de substituição com texto para esta secção (cartas ou secção não encontrada na emenda).')+'</div>'+
       '<div class="eaip-content" id="eaipDiff" style="display:none">Clique na aba para analisar com IA.</div>'+
     '</div>'+
     '<div class="slbl">Órgãos impactados</div>'+
@@ -769,25 +867,33 @@ function showTab(tab,el){
   document.querySelectorAll('.eaip-tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('eaipRaw').style.display=tab==='raw'?'block':'none';
+  document.getElementById('eaipAmdt').style.display=tab==='amdt'?'block':'none';
   document.getElementById('eaipDiff').style.display=tab==='diff'?'block':'none';
   const diffEl=document.getElementById('eaipDiff');
   if(tab==='diff'&&diffEl.textContent.trim().startsWith('Clique'))genDiff(curId);
 }
 
+// Texto actual do eAIP para uma alteração (via Worker, com cache). Só dados — sem DOM.
+async function fetchEaipText(id){
+  const c=changes.find(x=>x.id===id),a=analyses[id];
+  if(a.eaipText)return a.eaipText;
+  const url=buildEaipUrl(c.ad,c.section);if(!url)return '';
+  if(eaipCache[url]){a.eaipText=eaipCache[url];return a.eaipText;}
+  const workerResp=await fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_fetchUrl:url})});
+  const workerData=await workerResp.json();
+  if(workerData.error)throw new Error(workerData.error.message);
+  const binary=atob(workerData.base64);
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  const txt=await pdfToText({data:bytes.buffer},20);
+  eaipCache[url]=txt;a.eaipText=txt;
+  return txt;
+}
 async function loadEaip(id,url){
   const rawEl=document.getElementById('eaipRaw');
-  const a=analyses[id];
   try{
-    if(eaipCache[url]){a.eaipText=eaipCache[url];rawEl.textContent=a.eaipText.substring(0,3000);rawEl.classList.remove('dim');return;}
-    rawEl.textContent='A carregar via Worker...';
-    const workerResp=await fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_fetchUrl:url})});
-    const workerData=await workerResp.json();
-    if(workerData.error)throw new Error(workerData.error.message);
-    const binary=atob(workerData.base64);
-    const bytes=new Uint8Array(binary.length);
-    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-    const txt=await pdfToText({data:bytes.buffer},20);
-    eaipCache[url]=txt;a.eaipText=txt;
+    if(!analyses[id].eaipText)rawEl.textContent='A carregar via Worker...';
+    const txt=await fetchEaipText(id);
     rawEl.textContent=txt.substring(0,3000)+(txt.length>3000?'\n\n[truncado — '+txt.length+' chars total]':'');
     rawEl.classList.remove('dim');
   }catch(e){
@@ -796,14 +902,22 @@ async function loadEaip(id,url){
   }
 }
 
+// Contexto "antes / depois" partilhado pelo diff e pela descrição
+function beforeAfterCtx(a,capE,capA){
+  let s='';
+  if(a.eaipText)s+='\n\n=== TEXTO ACTUALMENTE PUBLICADO (eAIP, antes da emenda) ===\n'+a.eaipText.substring(0,capE);
+  if(a.amdtText)s+='\n\n=== TEXTO NOVO (páginas de substituição desta emenda) ===\n'+a.amdtText.substring(0,capA);
+  return s;
+}
+
 async function genDiff(id){
   const c=changes.find(x=>x.id===id),a=analyses[id];
   const diffEl=document.getElementById('eaipDiff');
   diffEl.innerHTML='<span class="spin"></span> A analisar com IA...';
-  if(!a.eaipText){diffEl.textContent='eAIP ainda não carregou. Aguarde.';return;}
+  if(!a.eaipText&&!a.amdtText){diffEl.textContent='Sem texto do eAIP nem da emenda para comparar. Aguarde o carregamento do eAIP.';return;}
   try{
     const data=await callAPI({model:'claude-haiku-4-5-20251001',max_tokens:700,
-      messages:[{role:'user',content:'És especialista ATC da NAV Portugal.\nAlteração AIRAC '+c.amdt+': '+c.description+'\nSecção: '+c.ad+' '+c.section+'\n\neAIP actual:\n'+a.eaipText.substring(0,5000)+'\n\nResponde em português:\nO QUE ESTÁ PUBLICADO ACTUALMENTE: [resumo do conteúdo actual relevante, max 80 palavras]\n\nO QUE MUDA COM O AIRAC '+c.amdt+': [o que muda especificamente, max 80 palavras]\n\nIMPACTO NOS SISTEMAS ATC: [impacto para TOPSKY-ATC/AIRAC DB, max 60 palavras]'}]});
+      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Compara o texto actualmente publicado com o texto novo da emenda e explica CONCRETAMENTE o que muda (identificadores, valores, coordenadas, frequências, procedimentos). Se só existir um dos textos, diz o que consegues concluir e assinala a limitação.\nAlteração AIRAC '+c.amdt+': '+c.description+'\nSecção: '+c.ad+' '+c.section+beforeAfterCtx(a,5000,5000)+'\n\nResponde em português:\nO QUE ESTÁ PUBLICADO ACTUALMENTE: [conteúdo actual relevante, max 80 palavras]\n\nO QUE MUDA COM O AIRAC '+c.amdt+': [diferenças concretas antes→depois, max 100 palavras]\n\nIMPACTO NOS SISTEMAS ATC: [impacto para TOPSKY-ATC/AIRAC DB, max 60 palavras]'}]});
     const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
     diffEl.innerHTML=txt.split('\n\n').map(function(s){
       if(s.indexOf('ACTUALMENTE')>-1)return '<span style="color:var(--muted);display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
@@ -811,7 +925,7 @@ async function genDiff(id){
       if(s.indexOf('IMPACTO')>-1)return '<span style="color:var(--nav3);display:block;margin-bottom:10px;white-space:pre-wrap">'+s+'</span>';
       return '<span style="display:block;margin-bottom:6px;white-space:pre-wrap">'+s+'</span>';
     }).join('');
-    a.diffText=txt;
+    a.diffText=txt;saveSession();
   }catch(e){diffEl.textContent='Erro: '+e.message;}
 }
 
@@ -854,27 +968,56 @@ function togSysCard(el){
   if(dot)dot.style.background=sel?'#ccc':'var(--nav2)';
 }
 
-async function genDesc(id){
+// Núcleo da geração de descrição (sem DOM) — usado pelo modal e pelo lote
+async function genDescCore(id){
   const c=changes.find(x=>x.id===id),a=analyses[id];
-  const btn=document.getElementById('genBtn');
-  btn.innerHTML='<span class="spin"></span> A gerar...';btn.disabled=true;
   const orgN=a.organs.map(oid=>{const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A';
   const sysN=a.systems.join(', ')||'N/A';
   const _tsD=a.systemsDetail?a.systemsDetail.find(s=>s.sysId==='TOPSKY'):null;
   const tsFiles=_tsD&&_tsD.files&&_tsD.files.length?'\nTOPSKY ficheiros a actualizar: '+_tsD.files.join(', '):'';
-  const eCtx=a.eaipText?'\n\neAIP actual:\n'+a.eaipText.substring(0,3500):'';
-  const dCtx=a.diffText?'\n\nAnálise de diferenças:\n'+a.diffText:'';
+  const dCtx=a.diffText?'\n\nAnálise de diferenças já feita:\n'+a.diffText:'';
+  const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:500,
+    messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras. Não mencionar COOPANS, usar apenas TOPSKY-ATC explicando: 1) o que estava publicado; 2) o que muda (valores/identificadores concretos, comparando o texto actual com o texto novo quando ambos existem); 3) impacto nos sistemas; 4) acções necessárias. IMPORTANTE: se a retirada de um navaid for parcial (ex. VOR retirado mas DME mantido), indicar explicitamente que o registo é MODIFICADO e não eliminado, e o que se mantém. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+tsFiles+beforeAfterCtx(a,3500,4000)+dCtx}]});
+  const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
+  a.desc=txt;saveSession();
+  return txt;
+}
+async function genDesc(id){
+  const btn=document.getElementById('genBtn');
+  btn.innerHTML='<span class="spin"></span> A gerar...';btn.disabled=true;
   try{
-    const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:500,
-      messages:[{role:'user',content:'És especialista ATC da NAV Portugal. Redija em português (termos técnicos em inglês) descrição de impacto para o ATOPLIS com max 150 palavras. Não mencionar COOPANS, usar apenas TOPSKY-ATC explicando: 1) o que estava publicado; 2) o que muda; 3) impacto nos sistemas; 4) acções necessárias. IMPORTANTE: se a retirada de um navaid for parcial (ex. VOR retirado mas DME mantido), indicar explicitamente que o registo é MODIFICADO e não eliminado, e o que se mantém. Sem títulos, sem bullets.\n\nAlteração AIRAC '+c.amdt+': '+c.description+'\nAD/Secção: '+c.ad+' - '+c.section+'\nÓrgãos: '+orgN+' | Sistemas: '+sysN+tsFiles+eCtx+dCtx}]});
-    const txt=data.content.map(x=>x.text||'').join('')||'Erro.';
-    document.getElementById('descBox').value=txt;a.desc=txt;
+    try{await fetchEaipText(id);}catch(e){} // enriquecer com o eAIP se ainda não carregou
+    const txt=await genDescCore(id);
+    const box=document.getElementById('descBox');if(box)box.value=txt;
   }catch(e){alert('Erro: '+e.message);}
   finally{btn.innerHTML='✨ Gerar com IA';btn.disabled=false;}
 }
+// Lote: gerar descrições para todos os itens activos do passo 3 que ainda não têm descrição
+let batchRunning=false;
+async function genAllDesc(){
+  if(batchRunning)return;
+  const ids=impactScope.filter(id=>!removedItems[id]&&!(analyses[id].desc&&analyses[id].desc.length>5));
+  if(!ids.length){setStatus('Todos os itens já têm descrição.');return;}
+  if(!confirm('Gerar descrições com IA para '+ids.length+' item(ns) sem descrição? (uma chamada à API por item)'))return;
+  batchRunning=true;
+  const btn=document.getElementById('btnGenAll');
+  let ok=0,fail=0;
+  for(let k=0;k<ids.length;k++){
+    const id=ids[k];
+    if(btn)btn.innerHTML='<span class="spin"></span> '+(k+1)+' / '+ids.length;
+    setStatus('A gerar descrição '+(k+1)+' de '+ids.length+'...');
+    try{
+      try{await fetchEaipText(id);}catch(e){}
+      await genDescCore(id);ok++;
+    }catch(e){fail++;}
+  }
+  batchRunning=false;
+  renderImpact();
+  setStatus('Descrições geradas: '+ok+(fail?' · falhadas: '+fail:'')+'.');
+}
 
-function saveModal(){const a=analyses[curId];const b=document.getElementById('descBox');if(b)a.desc=b.value;closeModal();setStatus('Análise guardada.');}
-function closeModal(){const a=analyses[curId];if(a){const b=document.getElementById('descBox');if(b)a.desc=b.value;}document.getElementById('modalBg').classList.remove('open');curId=null;}
+function saveModal(){const a=analyses[curId];const b=document.getElementById('descBox');if(b)a.desc=b.value;closeModal();saveSession();setStatus('Análise guardada.');}
+function closeModal(){const a=analyses[curId];if(a){const b=document.getElementById('descBox');if(b)a.desc=b.value;}document.getElementById('modalBg').classList.remove('open');curId=null;saveSession();}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 
 // ── PANEL 3 ──
@@ -890,6 +1033,7 @@ function goImpact(){
   detectDuplicates();
   renderImpact();
   goStep(3);
+  saveSession();
 }
 
 const DUP_STOP=new Set(['AIRAC','HIGH','MEDIUM','LOW','ENR','GEN','ATC','NAV','VOR','NDB','DME',
@@ -969,6 +1113,8 @@ function renderImpact(){
   const strip=document.getElementById('p3info');
   let h='ℹ️ &nbsp;<span><strong>'+activeIds.length+' alteração(ões) para exportar.</strong> Reveja antes de exportar.</span>';
   if(autoN>0)h+='<span style="background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;margin-left:10px;white-space:nowrap">✓ '+autoN+' actualização(ões) de carta removida(s) — ver secção Removidos ↓</span>';
+  const noDescN=activeIds.filter(id=>!(analyses[id].desc&&analyses[id].desc.length>5)).length;
+  if(noDescN>0)h+='<button class="btn btn-sm" id="btnGenAll" onclick="genAllDesc()" style="background:#fdf0ec;border:1px solid var(--nav3);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Gera com IA a descrição de impacto de todos os itens que ainda não a têm">✨ Gerar '+noDescN+' descrição(ões)</button>';
   if(dupN>0)h+='<button class="btn btn-sm" onclick="removeDuplicates()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0">✕ Remover '+dupN+' duplicado(s)</button>';
   h+='<button class="btn btn-sm" onclick="restoreInitial()" style="background:#fff;border:1px solid var(--border2);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Repõe a selecção original da primeira análise e todas as remoções">↺ Repor análise inicial</button>';
   strip.innerHTML=h;
@@ -1039,14 +1185,14 @@ function removeImpact(id){
   removedItems[id]={reason:'manual'};
   analyses[id].selected=false;
   const chk=document.querySelector('.rc[data-id="'+id+'"]');if(chk)chk.checked=false;
-  updBtn();renderImpact();
+  updBtn();renderImpact();saveSession();
 }
 
 function restoreItem(id){
   delete removedItems[id];
   analyses[id].selected=true;
   const chk=document.querySelector('.rc[data-id="'+id+'"]');if(chk)chk.checked=true;
-  updBtn();renderImpact();setStatus('Alteração reposta.');
+  updBtn();renderImpact();saveSession();setStatus('Alteração reposta.');
 }
 
 function removeDuplicates(){
@@ -1056,7 +1202,7 @@ function removeDuplicates(){
     analyses[id].selected=false;
     const chk=document.querySelector('.rc[data-id="'+id+'"]');if(chk)chk.checked=false;
   });
-  updBtn();renderImpact();setStatus('Duplicados removidos — pode repô-los na secção Removidos.');
+  updBtn();renderImpact();saveSession();setStatus('Duplicados removidos — pode repô-los na secção Removidos.');
 }
 
 function restoreInitialSel(){
@@ -1093,7 +1239,7 @@ function buildEmails(){
     let bodyLines='Caro(a) responsável,\n\nNo âmbito do AIRAC '+meta.number+' (efectivo '+meta.effectiveDate+'), foram identificadas as seguintes alterações com impacto nos sistemas ATC sob responsabilidade de '+org.name+' ('+org.code+'):\n\n';
     bodyLines+=items.map(function(c,i){
       const a=analyses[c.id];
-      return (i+1)+'. '+c.ad+'  Alteração: '+c.description+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
+      return (i+1)+'. '+c.ad+(c.section?' '+c.section:'')+'  Alteração: '+c.description+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
     }).join('\n\n---\n\n');
     bodyLines+='\n\nAgradecia confirmação do impacto e indicação das acções a realizar.\n\nCom os melhores cumprimentos,\nGOPLIS/DOPLIS — NAV Portugal';
     const card=document.createElement('div');card.className='ecard';
@@ -1250,6 +1396,12 @@ function openHelp(){
       '<td style="padding:5px 8px">'+(s.cats||[]).join(', ')+'</td></tr>';
   });
   h+='</table>';
+  h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">📄 O que a IA lê</h4>';
+  h+='<p style="font-size:12px;margin-bottom:6px">Na extracção, a IA recebe o <strong>sumário</strong> da emenda (secções 1 e 2) e as <strong>páginas de substituição</strong> das secções nele referidas (até 10.000 caracteres por secção, 200.000 no total). As páginas GEN 0.x (registos e checklist) e as cartas sem texto são ignoradas.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">No detalhe de cada alteração, a aba <strong>Publicado agora</strong> mostra o eAIP em vigor, <strong>Novo texto</strong> mostra as páginas da emenda para essa secção e <strong>O que mudou</strong> pede à IA a comparação antes→depois. A descrição para o ATOPLIS usa os dois textos.</p>';
+  h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">💾 Sessões</h4>';
+  h+='<p style="font-size:12px;margin-bottom:6px">O trabalho é guardado automaticamente neste browser, por número de AIRAC: selecções, órgãos, sistemas, descrições e remoções. Pode fechar o separador e retomar no passo 1. <strong>⬇ Exportar sessão</strong> descarrega um JSON para arquivo ou para continuar noutro computador (<strong>⬆ Importar JSON</strong>).</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, <strong>✨ Gerar N descrições</strong> cria com IA as descrições de todos os itens que ainda não a têm, uma chamada por item.</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🔁 Duplicados e reposição</h4>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, alterações que repetem o mesmo tema (ex.: um navaid retirado e as cartas que apenas mostram essa remoção) são agrupadas: a entrada principal é mantida e as cartas duplicadas vão para a secção <strong>Removidos</strong>, no fundo da página.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Todas as remoções são reversíveis com o botão <strong>↩ Repor</strong>. O botão <strong>↺ Repor análise inicial</strong> restaura a selecção original da primeira análise.</p>';
@@ -1258,6 +1410,101 @@ function openHelp(){
   document.getElementById('helpBg').classList.add('open');
 }
 function closeHelp(){document.getElementById('helpBg').classList.remove('open');}
+
+// ── SESSÕES (persistência) ──
+// Guardado automaticamente em localStorage por número de AIRAC. Pode fechar o separador e retomar mais tarde.
+const SESS_PREFIX='airac_sess_';
+function sessKey(){return SESS_PREFIX+(meta.number||'sem-numero').replace(/[^A-Za-z0-9-]/g,'_');}
+function snapshot(){
+  return {v:1,savedAt:new Date().toISOString(),meta,changes,analyses,removedItems,dupFlags,initialSelection,impactScope,
+    amdtPages:amdtPages.map(p=>({i:p.i,key:p.key,text:p.text.substring(0,12000)}))};
+}
+let saveTimer=null;
+function saveSessionNow(){
+  if(!changes.length)return;
+  clearTimeout(saveTimer);saveTimer=null;
+  try{localStorage.setItem(sessKey(),JSON.stringify(snapshot()));
+    document.getElementById('btnExportSess').style.display='inline-flex';
+    setStatus('Sessão guardada automaticamente ('+new Date().toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'})+').');
+  }catch(e){
+    // quota cheia: tentar sem páginas da emenda
+    try{const s=snapshot();s.amdtPages=[];localStorage.setItem(sessKey(),JSON.stringify(s));}
+    catch(e2){setStatus('⚠ Não foi possível guardar a sessão (armazenamento cheio).');}
+  }
+}
+function saveSession(){
+  if(!changes.length)return;
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(saveSessionNow,400);
+}
+// Garantir gravação se o separador for fechado logo após uma acção
+window.addEventListener('beforeunload',function(){if(saveTimer)saveSessionNow();});
+window.addEventListener('pagehide',function(){if(saveTimer)saveSessionNow();});
+function listSessions(){
+  const out=[];
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);if(!k||!k.startsWith(SESS_PREFIX))continue;
+    try{const s=JSON.parse(localStorage.getItem(k));out.push({key:k,number:(s.meta&&s.meta.number)||'?',eff:(s.meta&&s.meta.effectiveDate)||'',savedAt:s.savedAt,n:(s.changes||[]).length,
+      done:Object.values(s.analyses||{}).filter(a=>a.desc&&a.desc.length>5).length});}catch(e){}
+  }
+  return out.sort((a,b)=>(b.savedAt||'').localeCompare(a.savedAt||''));
+}
+function renderSessions(){
+  const wrap=document.getElementById('sessWrap'),list=document.getElementById('sessList');
+  const ss=listSessions();
+  wrap.style.display='block';
+  if(!ss.length){list.innerHTML='<div style="font-size:12px;color:var(--muted)">Nenhuma sessão guardada. Carregue um AIRAC para começar, ou importe um JSON exportado anteriormente.</div>';return;}
+  list.innerHTML=ss.map(function(s){
+    const d=s.savedAt?new Date(s.savedAt).toLocaleString('pt-PT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--s2)">'+
+      '<strong style="font-size:13px;color:var(--nav);min-width:110px">AIRAC '+esc(s.number)+'</strong>'+
+      '<span style="font-size:11px;color:var(--muted)">efectivo '+esc(s.eff)+' · '+s.n+' alteração(ões) · '+s.done+' com descrição · guardado '+d+'</span>'+
+      '<span style="margin-left:auto;display:flex;gap:6px">'+
+      '<button class="btn btn-primary btn-sm" onclick="resumeSession(\''+s.key+'\')">▶ Retomar</button>'+
+      '<button class="btn btn-secondary btn-sm" onclick="exportSession(\''+s.key+'\')">⬇ JSON</button>'+
+      '<button class="btn btn-sm" onclick="deleteSession(\''+s.key+'\')" style="background:#fff3f3;border:1px solid #fca5a5;color:#b91c1c">✕</button>'+
+      '</span></div>';
+  }).join('');
+}
+function loadSnapshot(s){
+  meta=s.meta||{};changes=s.changes||[];analyses=s.analyses||{};
+  removedItems=s.removedItems||{};dupFlags=s.dupFlags||{};initialSelection=s.initialSelection||null;impactScope=s.impactScope||[];
+  amdtPages=s.amdtPages||[];eaipCache={};
+  changes.forEach(c=>{if(!analyses[c.id])analyses[c.id]={organs:[],systems:[],systemsDetail:[],desc:'',eaipText:'',diffText:'',amdtText:'',selected:false};});
+  document.getElementById('btnExportSess').style.display='inline-flex';
+  buildPanel2();
+  if(impactScope.length){renderImpact();goStep(3);}
+}
+function resumeSession(key){
+  try{const s=JSON.parse(localStorage.getItem(key));if(!s||!s.changes)throw new Error('vazia');loadSnapshot(s);setStatus('Sessão AIRAC '+(meta.number||'')+' retomada.');}
+  catch(e){alert('Não foi possível retomar a sessão: '+e.message);}
+}
+function deleteSession(key){
+  if(!confirm('Apagar esta sessão guardada? (irreversível — exporte o JSON primeiro se quiser arquivar)'))return;
+  localStorage.removeItem(key);renderSessions();
+}
+function exportSession(key){
+  let s;
+  if(key){try{s=JSON.parse(localStorage.getItem(key));}catch(e){}}
+  else s=snapshot();
+  if(!s||!s.changes){alert('Nada para exportar.');return;}
+  const name='AIRAC_'+((s.meta&&s.meta.number)||'sessao').replace(/[^A-Za-z0-9-]/g,'_')+'_sessao_'+new Date().toISOString().slice(0,10)+'.json';
+  const blob=new Blob([JSON.stringify(s,null,1)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},500);
+  setStatus('Sessão exportada: '+name);
+}
+function importSessionFile(f){
+  if(!f)return;
+  const r=new FileReader();
+  r.onload=function(e){
+    try{const s=JSON.parse(e.target.result);if(!s.changes||!s.meta)throw new Error('formato inválido');
+      loadSnapshot(s);saveSession();setStatus('Sessão AIRAC '+(meta.number||'')+' importada.');}
+    catch(err){alert('Ficheiro inválido: '+err.message);}
+  };
+  r.readAsText(f);
+}
+window.addEventListener('DOMContentLoaded',renderSessions);
 
 function goStep(n){
   [1,2,3,4].forEach(function(i){
@@ -1269,7 +1516,7 @@ function goStep(n){
 }
 
 function resetAll(){
-  if(!confirm('Limpar todos os dados?'))return;
+  if(!confirm('Limpar o ecrã e voltar ao início? (a sessão guardada mantém-se na lista do passo 1 e pode ser retomada)'))return;
   changes=[];analyses={};meta={};curId=null;eaipCache={};
   initialSelection=null;removedItems={};dupFlags={};impactScope=[];
   document.getElementById('fi').value='';
@@ -1279,7 +1526,9 @@ function resetAll(){
   badge.textContent='Nenhum AIRAC carregado';
   badge.classList.remove('loaded');
   document.getElementById('btnReset').style.display='none';
-  goStep(1);setStatus('Pronto.');
+  document.getElementById('btnExportSess').style.display='none';
+  amdtPages=[];
+  goStep(1);renderSessions();setStatus('Pronto.');
 }
 </script>
 </body>
