@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.4</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.5</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -442,7 +442,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.4
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.5
   </div>
 </div>
 
@@ -773,13 +773,14 @@ async function runAI(pdfText){
     const _adFir=(c.ad||'').toUpperCase();
     const _firSet=new Set(['LPPT','LPPR','LPCS','LPFR','LPMA','LPPS','LPPC','LPPO','ENR','GEN','CCLIS']);
     const _isFir=_firSet.has(_adFir)||_adFir.startsWith('LPPT')||_adFir.startsWith('LPPR')||_adFir.startsWith('LPCS')||_adFir.startsWith('LPFR')||_adFir.startsWith('LPMA')||_adFir.startsWith('LPPS');
-    const _sd=guessSystems(c);
-    const _allOrg=[...new Set(_sd.flatMap(s=>s.organs))];
-    analyses[c.id]={organs:_allOrg.length?_allOrg:(AD_ORG[c.ad]||[]),
-      systems:_sd.map(s=>s.name),systemsDetail:_sd,
-      desc:'',eaipText:'',diffText:'',
+    analyses[c.id]={organs:[],systems:[],systemsDetail:[],desc:'',eaipText:'',diffText:'',
       amdtText:amdtTextFor(c.ad,c.section,8000), // páginas novas da emenda para esta secção
-      selected:_isFir&&_sd.length>0};
+      selected:false};
+    const _imp=computeImpact(c); // usa também o texto da emenda nas palavras-chave
+    analyses[c.id].organs=_imp.organs.length?_imp.organs:(AD_ORG[c.ad]||[]);
+    analyses[c.id].systems=_imp.systems;
+    analyses[c.id].systemsDetail=_imp.systemsDetail;
+    analyses[c.id].selected=_isFir&&_imp.systemsDetail.length>0;
   });
 
   const withPages=changes.filter(c=>analyses[c.id].amdtText).length;
@@ -799,42 +800,61 @@ async function refineDescriptions(){
   const batches=[];for(let i=0;i<todo.length;i+=BATCH)batches.push(todo.slice(i,i+BATCH));
   const strip=document.getElementById('p2info');
   const base=strip.innerHTML;
-  let done=0,updated=0;
+  let done=0,updated=0,recat=0;
   for(const b of batches){
     strip.innerHTML=base+'<span style="margin-left:12px;background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;white-space:nowrap"><span class="spin"></span>A refinar descrições com o texto da emenda — lote '+(done+1)+' de '+batches.length+'</span>';
     try{
-      const items=b.map(c=>'--- ITEM '+c.id+' | '+c.ad+' '+c.section+'\nCURRENT DESCRIPTION: '+c.description+'\nNEW AIP PAGES FOR THIS SECTION:\n'+analyses[c.id].amdtText.substring(0,CAP)).join('\n\n');
+      const items=b.map(c=>'--- ITEM '+c.id+' | '+c.ad+' '+c.section+'\nCURRENT DESCRIPTION: '+c.description+'\nCURRENT CATEGORIES: '+(c.categories||[]).join(',')+'\nNEW AIP PAGES FOR THIS SECTION:\n'+analyses[c.id].amdtText.substring(0,CAP)).join('\n\n');
       const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:1500,temperature:0,
-        messages:[{role:'user',content:'You are an ATS analyst at NAV Portugal. For each ITEM below, rewrite CURRENT DESCRIPTION so it is precise and factual, using ONLY the NEW AIP PAGES given for that item: name the exact identifiers (navaid ID, waypoint, chart number, ICAO code), exact new values when they appear (coordinates, frequencies, hours, altitudes), and for navaid withdrawals state what is withdrawn AND what is retained (e.g. "SGR VOR withdrawn; DME retained"). Keep the same subject and scope as the current description: do NOT merge items, do NOT add new subjects, do NOT drop the item. Max 30 words each, English, ASCII only. If the pages do not add information, return the current description unchanged.\n\nReturn ONLY a JSON array: [{"id":"<id>","description":"..."}]\n\n'+items}]});
+        messages:[{role:'user',content:'You are an ATS analyst at NAV Portugal. For each ITEM below, rewrite CURRENT DESCRIPTION so it is precise and factual, using ONLY the NEW AIP PAGES given for that item: name the exact identifiers (navaid ID, waypoint, chart number, ICAO code), exact new values when they appear (coordinates, frequencies, hours, altitudes), and for navaid withdrawals state what is withdrawn AND what is retained (e.g. "SGR VOR withdrawn; DME retained"). Keep the same subject and scope as the current description: do NOT merge items, do NOT add new subjects, do NOT drop the item. Max 30 words each, English, ASCII only. If the pages do not add information, return the current description unchanged.\n\nALSO, for each item, based ONLY on the pages:\n(a) "categories": confirm or correct CURRENT CATEGORIES, choosing from exactly this list: SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP PROC FPL SPACE RESTRICT GER. Keep them if correct; fix them only when the pages clearly show otherwise.\n(b) "action": what happens to the published data record(s): INSERT = new record(s) added; MODIFY = existing record changed or PARTIALLY withdrawn (e.g. VOR removed but DME retained, coordinates corrected); WITHDRAW = record(s) completely removed; NONE = editorial/chart-only change with no data record affected.\n\nReturn ONLY a JSON array: [{"id":"<id>","description":"...","categories":["..."],"action":"INSERT|MODIFY|WITHDRAW|NONE"}]\n\n'+items}]});
       const raw=data.content.map(x=>x.text||'').join('');
       const jm=raw.match(/\[[\s\S]*\]/);
       if(jm){
         let arr=[];try{arr=JSON.parse(jm[0]);}catch(e){try{arr=JSON.parse(jm[0].replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/,\s*([}\]])/g,'$1'));}catch(e2){}}
         arr.forEach(r=>{
           const c=changes.find(x=>x.id===String(r.id));
-          if(c&&r.description&&r.description.length>5){
-            if(r.description.trim()!==c.description.trim()){c._origDescription=c.description;c.description=r.description.trim();updated++;}
-            c._refined=true;
+          if(!c)return;
+          if(r.description&&r.description.length>5&&r.description.trim()!==c.description.trim()){c._origDescription=c.description;c.description=r.description.trim();updated++;}
+          if(r.action&&/^(INSERT|MODIFY|WITHDRAW|NONE)$/.test(String(r.action).trim()))c.action=String(r.action).trim();
+          if(Array.isArray(r.categories)&&r.categories.length){
+            const norm=[...new Set(r.categories.map(cat=>{cat=String(cat).toUpperCase().trim();if(cat==='GEN')return 'GER';if(cat==='AIR')return 'AWY';return cat;}).filter(cat=>CAT_LIST.includes(cat)))];
+            if(norm.length&&JSON.stringify(norm.slice().sort())!==JSON.stringify((c.categories||[]).slice().sort())){
+              c._origCategories=(c.categories||[]).slice();c.categories=norm;recat++;
+            }
           }
+          c._refined=true;
         });
       }
-      b.forEach(c=>{c._refined=true;});
+      // Revalidar o impacto (sistemas/órgãos) com as novas categorias e o texto da emenda,
+      // excepto nos itens que o utilizador já editou à mão
+      b.forEach(c=>{
+        c._refined=true;
+        const a=analyses[c.id];
+        if(a&&!a._userEdited){
+          const imp=computeImpact(c);
+          a.organs=imp.organs.length?imp.organs:(AD_ORG[c.ad]||[]);
+          a.systems=imp.systems;a.systemsDetail=imp.systemsDetail;
+        }
+      });
     }catch(e){/* lote falhado: fica a descrição do sumário */}
     done++;
     filterTable();saveSession();
   }
   refineRunning=false;
-  strip.innerHTML=base+'<span style="margin-left:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;white-space:nowrap">✓ Descrições refinadas com o texto da emenda ('+updated+' actualizadas)</span>';
-  setStatus('Refinamento concluído: '+updated+' descrição(ões) melhoradas com as páginas da emenda.');
+  strip.innerHTML=base+'<span style="margin-left:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;white-space:nowrap">✓ Refinado com o texto da emenda ('+updated+' descrições'+(recat?'; '+recat+' categorias corrigidas e sistemas revalidados':'')+')</span>';
+  setStatus('Refinamento concluído: '+updated+' descrição(ões) melhoradas'+(recat?', '+recat+' categoria(s) corrigida(s) com revalidação de sistemas':'')+'.');
 }
 
-function guessSystems(c){
+function guessSystems(c,extraText){
   const cats=c.categories||[],desc=(c.description||'').toLowerCase(),
         ad=(c.ad||'').toUpperCase(),st=c._secType||'AD';
+  // As palavras-chave aplicam-se à descrição E ao texto das páginas da emenda (quando existe)
+  const hay=desc+' '+String(extraText||'').toLowerCase();
   const result=[];
   SYSTEMS_DEF.forEach(sys=>{
-    const catHit=sys.cats.some(tc=>cats.includes(tc));
-    const kwHit=sys.kw&&sys.kw.some(kw=>desc.includes(kw));
+    const catHits=sys.cats.filter(tc=>cats.includes(tc));
+    const kwHits=sys.kw?sys.kw.filter(kw=>hay.includes(kw)):[];
+    const catHit=catHits.length>0,kwHit=kwHits.length>0;
     if(!catHit&&!kwHit)return;
     if(sys.secs&&!sys.secs.includes(st))return;
     if(sys.onlyADs&&!sys.onlyADs.includes(ad))return;
@@ -850,11 +870,30 @@ function guessSystems(c){
         sys.files[tc].forEach(f=>{if(!seen.has(f)){seen.add(f);files.push(f);}})
       );
     }
-    result.push({sysId:sys.id,name:sys.name,organs,files});
+    const whyParts=[];
+    if(catHit)whyParts.push('categoria '+catHits.join('/'));
+    if(kwHit)whyParts.push('termo "'+kwHits.join('", "')+'"'+(kwHits.some(k=>!desc.includes(k))?' no texto da emenda':''));
+    result.push({sysId:sys.id,name:sys.name,organs,files,why:whyParts.join(' + ')});
   });
   return result;
 }
 function guessSys(c){return guessSystems(c).map(s=>s.name);}
+// Recalcula o impacto (órgãos/sistemas) de um item, usando também o texto da emenda
+function computeImpact(c){
+  const amdtT=(analyses[c.id]&&analyses[c.id].amdtText)||'';
+  const sd=guessSystems(c,amdtT);
+  return {organs:[...new Set(sd.flatMap(s=>s.organs))],systems:sd.map(s=>s.name),systemsDetail:sd};
+}
+const CAT_LIST=['SID','STAR','IAP','HLDG','WPT','NAV','RWY','FREQ','AWY','MSA','HLP','PROC','FPL','SPACE','RESTRICT','GER'];
+// Acção sobre o(s) registo(s) nos sistemas
+function actPT(a){return a==='INSERT'?'INSERIR':a==='MODIFY'?'MODIFICAR':a==='WITHDRAW'?'ELIMINAR':a==='NONE'?'SEM REGISTO':'';}
+function actionBadge(c){
+  if(!c.action)return '';
+  const map={INSERT:['#f0fdf4','#166534','#86efac'],MODIFY:['#fff8e1','#92400e','#fbbf24'],WITHDRAW:['#fff3f3','#b91c1c','#fca5a5'],NONE:['#f5f5f5','#666','#ddd']};
+  const m=map[c.action]||map.NONE;
+  const tip=c.action==='NONE'?'Alteração sem acção sobre registos dos sistemas (editorial/carta)':'Acção sobre o(s) registo(s) nos ficheiros dos sistemas';
+  return '<span title="'+tip+'" style="background:'+m[0]+';color:'+m[1]+';border:1px solid '+m[2]+';border-radius:5px;font-size:10px;font-weight:700;padding:1px 7px;margin-left:8px;vertical-align:middle;white-space:nowrap">'+actPT(c.action)+'</span>';
+}
 
 function buildEaipUrl(ad,section){
   const adU=(ad||'').toUpperCase().trim();
@@ -946,7 +985,7 @@ function openModal(id){
   const c=changes.find(x=>x.id===id),a=analyses[id];
   document.getElementById('mBadge').textContent=iPT(c.impact);
   document.getElementById('mBadge').className='imp imp-'+c.impact;
-  document.getElementById('mTitle').textContent=c._secType+(c._secType==='AD'?' · '+c.ad:'')+' · '+c.section;
+  document.getElementById('mTitle').innerHTML=esc(c._secType+(c._secType==='AD'?' · '+c.ad:'')+' · '+c.section)+actionBadge(c);
   const eUrl=buildEaipUrl(c.ad,c.section);
   const pdfLink=eUrl?'<a href="'+eUrl+'" target="_blank" style="margin-left:8px;font-size:10px;color:var(--nav3);text-decoration:none;padding:2px 8px;border:1px solid rgba(0,71,171,0.35);border-radius:5px">↗ PDF eAIP</a>':'';
   const body=document.getElementById('mBody');
@@ -1051,8 +1090,8 @@ async function genDiff(id){
   }catch(e){diffEl.textContent='Erro: '+e.message;}
 }
 
-function togOrgan(id,el){const a=analyses[curId];if(a.organs.includes(id)){a.organs=a.organs.filter(x=>x!==id);el.classList.remove('sel');}else{a.organs.push(id);el.classList.add('sel');}}
-function togSys(name,el){const a=analyses[curId];if(a.systems.includes(name)){a.systems=a.systems.filter(x=>x!==name);el.classList.remove('sel');}else{a.systems.push(name);el.classList.add('sel');}}
+function togOrgan(id,el){const a=analyses[curId];a._userEdited=true;if(a.organs.includes(id)){a.organs=a.organs.filter(x=>x!==id);el.classList.remove('sel');}else{a.organs.push(id);el.classList.add('sel');}}
+function togSys(name,el){const a=analyses[curId];a._userEdited=true;if(a.systems.includes(name)){a.systems=a.systems.filter(x=>x!==name);el.classList.remove('sel');}else{a.systems.push(name);el.classList.add('sel');}}
 
 function buildSysCards(a){
   if(!a.systemsDetail||!a.systemsDetail.length){
@@ -1067,7 +1106,7 @@ function buildSysCards(a){
     const filT=(s.files||[]).map(f=>
       '<span class="tag" style="background:#f0f8ff;color:#1e40af;border-color:#bfdbfe;font-size:9px">'+f+'</span>'
     ).join('');
-    return '<div data-name="'+s.name+'" onclick="togSysCard(this)" style="background:'+(sel?'#fdf0ec':'#fff')+
+    return '<div data-name="'+s.name+'" onclick="togSysCard(this)" title="'+esc(s.why?('Atribuído por: '+s.why+'. Clique para activar/desactivar.'):'Clique para activar/desactivar.')+'" style="background:'+(sel?'#fdf0ec':'#fff')+
       ';border:1.5px solid '+(sel?'var(--nav2)':'var(--border)')+
       ';border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:all .2s">'+
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
@@ -1082,6 +1121,7 @@ function buildSysCards(a){
 function togSysCard(el){
   const name=el.getAttribute('data-name');
   const a=analyses[curId];if(!a)return;
+  a._userEdited=true;
   const sel=a.systems.includes(name);
   if(sel)a.systems=a.systems.filter(x=>x!==name);else a.systems.push(name);
   el.style.background=sel?'#fff':'#fdf0ec';
@@ -1253,13 +1293,14 @@ function renderImpact(){
     chgs.forEach(function(c){
       const a=analyses[c.id];
       const oT=a.organs.map(oid=>'<span class="tag">'+oid+'</span>').join('')||'<span style="color:var(--muted);font-size:11px">Sem órgão</span>';
-      const sT=a.systems.slice(0,3).map(s=>'<span class="tag">'+s+'</span>').join('')+(a.systems.length>3?'<span class="tag">+'+(a.systems.length-3)+'</span>':'');
+      const _whyMap={};(a.systemsDetail||[]).forEach(function(sd){_whyMap[sd.name]=sd.why||'';});
+      const sT=a.systems.slice(0,3).map(s=>'<span class="tag" title="'+esc(_whyMap[s]?'Atribuído por: '+_whyMap[s]:'Adicionado manualmente')+'">'+s+'</span>').join('')+(a.systems.length>3?'<span class="tag">+'+(a.systems.length-3)+'</span>':'');
       const dupB=dupFlags[c.id]?'<span class="dup-badge" title="Este tema já aparece em: '+esc(dupFlags[c.id])+'" style="background:#fff8e1;color:#92400e;border:1px solid #fbbf24;border-radius:5px;font-size:10px;padding:1px 7px;margin-left:8px;vertical-align:middle;white-space:nowrap">⚠️ duplicado provável</span>':'';
       const row=document.createElement('div');
       row.className='impact-row';row.dataset.id=c.id;
       row.innerHTML='<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:2px">'+iPT(c.impact)+'</span>'+
         '<div style="flex:1;min-width:0">'+
-          '<div class="impact-desc">'+c.description+dupB+'</div>'+
+          '<div class="impact-desc">'+c.description+actionBadge(c)+dupB+'</div>'+
           '<div style="margin-bottom:4px">'+oT+'</div>'+
           '<div>'+sT+'</div>'+
           (a.desc?'<div class="impact-meta">'+a.desc.substring(0,110)+'...</div>':'')+
@@ -1363,7 +1404,7 @@ function buildEmails(){
     let bodyLines='Caro(a) responsável,\n\nNo âmbito do AIRAC '+meta.number+' (efectivo '+meta.effectiveDate+'), foram identificadas as seguintes alterações com impacto nos sistemas ATC sob responsabilidade de '+org.name+' ('+org.code+'):\n\n';
     bodyLines+=items.map(function(c,i){
       const a=analyses[c.id];
-      return (i+1)+'. '+c.ad+(c.section?' '+c.section:'')+'  Alteração: '+c.description+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
+      return (i+1)+'. '+c.ad+(c.section?' '+c.section:'')+'  Alteração: '+c.description+(c.action?'\nAcção no(s) registo(s): '+actPT(c.action):'')+'\n\nSistemas: '+(a.systems.join(', ')||'N/A')+'\n\nAnálise: '+(a.desc||'(pendente)');
     }).join('\n\n---\n\n');
     bodyLines+='\n\nAgradecia confirmação do impacto e indicação das acções a realizar.\n\nCom os melhores cumprimentos,\nGOPLIS/DOPLIS — NAV Portugal';
     const card=document.createElement('div');card.className='ecard';
@@ -1421,6 +1462,7 @@ function buildPDF(){
     g.forEach(function(c,i){
       const a=analyses[c.id];
       L.push((i+1)+'. '+(c.section?c.section+'  ':'')+'Alteração: '+c.description);   L.push('   Categorias: '+(c.categories||[]).join(', '));
+      if(c.action)L.push('   Acção no(s) registo(s): '+actPT(c.action));
       L.push('   Órgãos: '+a.organs.map(function(oid){const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', ')||'N/A');
       L.push('   Sistemas: '+a.systems.join(', ')||'N/A');
       if(a.systemsDetail){
@@ -1638,6 +1680,9 @@ function openHelp(){
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">💾 Sessões</h4>';
   h+='<p style="font-size:12px;margin-bottom:6px">O trabalho é guardado automaticamente neste browser, por número de AIRAC: selecções, órgãos, sistemas, descrições e remoções. Pode fechar o separador e retomar no passo 1. <strong>⬇ Exportar sessão</strong> descarrega um JSON para arquivo ou para continuar noutro computador (<strong>⬆ Importar JSON</strong>).</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, <strong>✨ Gerar N descrições</strong> cria com IA as descrições de todos os itens que ainda não a têm, uma chamada por item.</p>';
+  h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">⚙ Acção e validação do impacto</h4>';
+  h+='<p style="font-size:12px;margin-bottom:6px">Cada item pode ter uma etiqueta de <strong>Acção</strong> sobre os registos dos sistemas: <strong>INSERIR</strong> (registo novo), <strong>MODIFICAR</strong> (registo alterado ou retirada parcial, ex. VOR retirado mas DME mantido), <strong>ELIMINAR</strong> (registo removido) ou <strong>SEM REGISTO</strong> (alteração editorial/carta). É atribuída pela IA na fase de refinamento, a partir do texto real da emenda.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">Na mesma fase, as <strong>categorias</strong> são verificadas contra o texto da emenda e os sistemas/órgãos são <strong>revalidados</strong> — excepto nos itens que já editou manualmente, que são sempre respeitados. Passe o rato sobre um sistema para ver <strong>porque foi atribuído</strong> (categoria ou termo encontrado).</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🔁 Duplicados e reposição</h4>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, alterações que repetem o mesmo tema (ex.: um navaid retirado e as cartas que apenas mostram essa remoção) são agrupadas: a entrada principal é mantida e as cartas duplicadas vão para a secção <strong>Removidos</strong>, no fundo da página.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Todas as remoções são reversíveis com o botão <strong>↩ Repor</strong>. O botão <strong>↺ Repor análise inicial</strong> restaura a selecção original da primeira análise.</p>';
