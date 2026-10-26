@@ -526,14 +526,29 @@ window.addEventListener('DOMContentLoaded',()=>{const s=getUrl();document.getEle
 async function callAPI(body){
   const url=getUrl();
   if(!url)throw new Error('URL do Worker não configurada.');
-  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const txt=await r.text();
-  let d;try{d=JSON.parse(txt);}catch(e){
-    if(r.status===524||/524/.test(txt))throw new Error('O Cloudflare cortou a ligação por demorar mais de 100 s (erro 524). Tente de novo; se persistir, o pedido é demasiado grande.');
-    throw new Error('Resposta inválida do Worker (HTTP '+r.status+'): '+txt.substring(0,120));
+  // 2 tentativas; timeout de 115 s por tentativa; feedback de espera a cada 15 s no log
+  for(let attempt=1;attempt<=2;attempt++){
+    const t0=Date.now();
+    const tick=setInterval(function(){try{lg('  ... a aguardar resposta da API ('+Math.round((Date.now()-t0)/1000)+' s)');}catch(e){}},15000);
+    const ctl=new AbortController();
+    const kill=setTimeout(function(){ctl.abort();},115000);
+    try{
+      const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:ctl.signal});
+      const txt=await r.text();
+      let d;try{d=JSON.parse(txt);}catch(e){
+        if(r.status===524||/524/.test(txt))throw new Error('CF524');
+        throw new Error('Resposta inválida do Worker (HTTP '+r.status+'): '+txt.substring(0,120));
+      }
+      if(d.error)throw new Error(d.error.message);
+      return d;
+    }catch(e){
+      const is524=e.message==='CF524',isAbort=(e.name==='AbortError'||/aborted/i.test(e.message));
+      if((is524||isAbort)&&attempt===1){try{lg('  ⚠ A API demorou demasiado. A tentar de novo automaticamente...');}catch(e2){}continue;}
+      if(is524)throw new Error('O Cloudflare cortou a ligação por demorar mais de 100 s (erro 524), mesmo após nova tentativa. Aguarde um momento e tente outra vez.');
+      if(isAbort)throw new Error('A API não respondeu em 115 s, mesmo após nova tentativa. Aguarde um momento e tente outra vez.');
+      throw e;
+    }finally{clearInterval(tick);clearTimeout(kill);}
   }
-  if(d.error)throw new Error(d.error.message);
-  return d;
 }
 
 // ── PDF.JS LOADER ──
@@ -689,7 +704,7 @@ function setStatus(m){document.getElementById('statusTxt').textContent=m;}
 // ── AI ANALYSIS ──
 async function runAI(pdfText){
   lg('A contactar API...');prog(40);
-  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nGRANULARITY RULES (critical — follow EXACTLY the same way every time):\n1. Create EXACTLY ONE item per changed subject per AIP section.\n2. NEVER merge two different navaids, waypoints, procedures or subjects into one item (e.g. LAR withdrawal and SGR withdrawal = 2 SEPARATE items, even if in the same section).\n3. NEVER merge changes from different sections into one item (e.g. ENR 6.01-5 and ENR 6.02-9 = 2 SEPARATE items).\n4. Each updated chart is its own item, with its own chart section number.\n5. Descriptions: factual, max 20 words, ALWAYS naming the specific identifier (navaid ID, waypoint name, chart number, ICAO code).\n6. PARTIAL vs TOTAL withdrawal: if a navaid facility is only PARTIALLY withdrawn (e.g. the VOR element removed but the DME retained), the description MUST state both what is withdrawn AND what remains (e.g. \"SGR VOR withdrawn; DME retained - record becomes DME-only\"). NEVER describe a partial withdrawal as a full withdrawal. Check the amendment text carefully for words like \"DME retained\", \"remains\", \"converted to\".\n\nDOCUMENT: the amendment SUMMARY (section 1 AIRAC changes, section 2 NON-AIRAC changes). The summary is the authoritative LIST of items: create one item per summary entry, never invent items that are not in the summary.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number. This ALWAYS takes precedence: even if the item names a specific ICAO code (e.g. a new heliport LPLR listed in GEN 2.4), the ad field MUST be GEN — the ICAO code goes in the description only. The ad field reflects WHERE the change is published in the AIP (GEN / ENR / aerodrome chapter), NEVER the subject of the change.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"],"amdt":"XXX-YY","effectiveDate":"DD-MMM-YYYY"}]\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
+  const prompt='You are an ATS analyst at NAV Portugal. Analyse this AIP Amendment and extract EVERY SINGLE change, from BOTH section 1 (AIRAC) AND section 2 (NON-AIRAC). Do NOT skip any item — including GEN changes such as new heliports, phone/fax updates, meteorological changes, or administrative items.\n\nGRANULARITY RULES (critical — follow EXACTLY the same way every time):\n1. Create EXACTLY ONE item per changed subject per AIP section.\n2. NEVER merge two different navaids, waypoints, procedures or subjects into one item (e.g. LAR withdrawal and SGR withdrawal = 2 SEPARATE items, even if in the same section).\n3. NEVER merge changes from different sections into one item (e.g. ENR 6.01-5 and ENR 6.02-9 = 2 SEPARATE items).\n4. Each updated chart is its own item, with its own chart section number.\n5. Descriptions: factual, max 20 words, ALWAYS naming the specific identifier (navaid ID, waypoint name, chart number, ICAO code).\n6. PARTIAL vs TOTAL withdrawal: if a navaid facility is only PARTIALLY withdrawn (e.g. the VOR element removed but the DME retained), the description MUST state both what is withdrawn AND what remains (e.g. \"SGR VOR withdrawn; DME retained - record becomes DME-only\"). NEVER describe a partial withdrawal as a full withdrawal. Check the amendment text carefully for words like \"DME retained\", \"remains\", \"converted to\".\n\nDOCUMENT: the amendment SUMMARY (section 1 AIRAC changes, section 2 NON-AIRAC changes). The summary is the authoritative LIST of items: create one item per summary entry, never invent items that are not in the summary.\n\nRULES: Use ONLY straight double quotes. ASCII only in JSON. No trailing commas.\n\nIMPORTANT: For items in section 2 NON-AIRAC under GEN subsections (like 2.4, 3.3, 3.5): use ad=GEN and section=the subsection number. This ALWAYS takes precedence: even if the item names a specific ICAO code (e.g. a new heliport LPLR listed in GEN 2.4), the ad field MUST be GEN — the ICAO code goes in the description only. The ad field reflects WHERE the change is published in the AIP (GEN / ENR / aerodrome chapter), NEVER the subject of the change.\nFor ENR items: ad=ENR. For AD items: ad=ICAO code.\n\nReturn ONLY:\nMETADATA:{"number":"XXX-YY","effectiveDate":"DD-MMM-YYYY","title":"AIP Amendment AIRAC XXX-YY"}\n[{"id":"1","ad":"GEN","section":"2.4","description":"New HLP - LPLR Loures/Hospital Beatriz Angelo","impact":"HIGH","categories":["HLP"]},{"id":"2","ad":"ENR","section":"1.6","description":"Formatting edited for compliance","impact":"LOW","categories":["GER"]}]\n(do NOT repeat amdt or effectiveDate in each item - they come only from METADATA; keep the response as short as possible)\n\nimpact: HIGH=new navaid/procedure/fix (SID/STAR/IAP/WPT/NAV/RWY/HLP). MEDIUM=modification to existing nav data (HLDG/FREQ/AWY/MSA). LOW=operational or admin without nav-DB impact (PROC/FPL/SPACE/RESTRICT/GER).\ncategories (pick all that apply):\n  NAV-DB (updates TOPSKY/GEC dataset): SID STAR IAP HLDG WPT NAV RWY FREQ AWY MSA HLP\n  OPERATIONAL (no nav-DB impact):      PROC FPL SPACE RESTRICT GER\nDefs: SID=departure proc | STAR=arrival proc | IAP=instr approach | HLDG=published hold | WPT=fix/waypoint | NAV=navaid(VOR/NDB/DME/ILS) | RWY=runway designation/parameters | FREQ=comm or nav frequency | AWY=airway/ENR route | MSA=min sector alt | HLP=helicopter/heliport | PROC=ATC verbal/operational procedure (NO nav data) | FPL=flight plan/FF-ICE/AIDC/AFTN | SPACE=airspace classification/limits | RESTRICT=restricted/prohibited area | GER=admin/formatting\nad: ICAO code (e.g. LPPT), ENR, or GEN.\n\nDOCUMENT:\n'+pdfText;
 
   const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:8000,temperature:0,messages:[{role:'user',content:prompt}]});
   if(data.stop_reason==='max_tokens')lg('⚠ Resposta da IA truncada (limite de tokens) — a lista pode estar incompleta.');
@@ -746,6 +761,7 @@ async function runAI(pdfText){
     if(!c.ad)c.ad='N/A';
     if(!c.section)c.section='';
     if(!c.description)c.description='(sem descrição)';
+    c.amdt=c.amdt||meta.number;c.effectiveDate=c.effectiveDate||meta.effectiveDate;
     // Determinar tipo de secção para filtro
     // Salvaguarda: se a secção é de GEN (2.x/3.x de GEN) mas a IA classificou com código ICAO,
     // forçar ad=GEN para o item não sair do agrupamento GEN
