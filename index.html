@@ -998,7 +998,11 @@ async function fetchEaipText(id){
   if(eaipCache[url]){a.eaipText=eaipCache[url];a.eaipUrl=url;return a.eaipText;}
   const workerResp=await fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_fetchUrl:url})});
   const workerData=await workerResp.json();
-  if(workerData.error)throw new Error(workerData.error.message);
+  if(workerData.error){
+    const msg=workerData.error.message||'';
+    if(/HTTP 50[23]/.test(msg))throw new Error('O site do eAIP da NAV (ais.nav.pt) está indisponível neste momento (em manutenção). A análise do AIRAC não é afectada — tente a comparação com o eAIP mais tarde.');
+    throw new Error(msg);
+  }
   const binary=atob(workerData.base64);
   const bytes=new Uint8Array(binary.length);
   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
