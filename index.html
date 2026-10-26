@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.5</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.6</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -442,7 +442,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.5
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.6
   </div>
 </div>
 
@@ -502,6 +502,22 @@ const AD_ORG={'LPPT':['TWRLIS','CCLIS'],'LPPR':['TWRPOR'],'LPCS':['TWRCAS'],'LPF
 const EAIP='https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/pdf/';
 
 let changes=[],analyses={},meta={},curId=null,eaipCache={},eaipPagesCache={};
+// Cache partilhada (Cloudflare KV via Worker): a 1ª análise de cada AIRAC paga; as seguintes são gratuitas
+let cacheKey=null,cacheHit=false;
+async function sha256hex(s){
+  try{
+    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){return null;}
+}
+function cachePut(){
+  if(!cacheKey||cacheHit||!changes.length)return;
+  const payload={v:1,savedAt:new Date().toISOString(),meta:meta,changes:changes};
+  fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_cachePut:cacheKey,data:payload})})
+    .then(r=>r.json())
+    .then(d=>{if(d&&d.ok)setStatus('Análise partilhada na cache — a próxima análise deste AIRAC, por qualquer pessoa, será gratuita.');})
+    .catch(e=>{});
+}
 
 // ── CONFIG ──
 function getUrl(){return localStorage.getItem('airac_wurl')||'https://curly-sound-5d5e.mendreas.workers.dev';}
@@ -692,6 +708,27 @@ function doFile(f){
       const withPages=refs.filter(([ad,sec])=>pagesForRef(ad,sec).length).length;
       lg('PDF: '+pages.length+' páginas, '+full.length+' chars. Sumário: '+summary.length+' chars ('+(summaryEnd+1)+' pág).');
       lg('Secções referidas no sumário: '+refs.length+' — com páginas de substituição indexadas: '+withPages+'.');
+      // Cache partilhada: se alguém já analisou este AIRAC, usar esse resultado (custo zero)
+      cacheKey=null;cacheHit=false;
+      try{
+        const h=await sha256hex(summary);
+        if(h){
+          cacheKey='airac_'+h;
+          lg('A verificar a cache partilhada...');
+          const ctl=new AbortController();const kill=setTimeout(function(){ctl.abort();},8000);
+          const cr=await fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_cacheGet:cacheKey}),signal:ctl.signal});
+          clearTimeout(kill);
+          const cd=await cr.json();
+          if(cd&&cd.cached&&cd.cached.changes&&cd.cached.changes.length){
+            cacheHit=true;meta=cd.cached.meta||{};
+            lg('✓ Este AIRAC já foi analisado por alguém em '+(cd.cached.savedAt?new Date(cd.cached.savedAt).toLocaleDateString('pt-PT'):'data desconhecida')+' — a usar a análise da cache, sem custos de IA.');prog(70);
+            finalizeChanges(cd.cached.changes,true);
+            return;
+          }
+          if(cd&&cd.nocache)lg('(cache não configurada no Worker — análise normal)');
+          else lg('Sem análise em cache — primeira análise deste AIRAC (será partilhada no fim).');
+        }
+      }catch(e){lg('(cache indisponível — análise normal)');}
       lg('Fase 1 — a enviar o sumário ('+summary.length+' chars, ~'+Math.round(summary.length/4)+' tokens) para extrair a lista...');prog(35);
       await runAI(summary);
     }catch(e){lg('ERRO: '+e.message);setStatus('Erro: '+e.message);}
@@ -732,7 +769,11 @@ async function runAI(pdfText){
     }
   }
   if(!parsed||!parsed.length)throw new Error('Não foi possível extrair alterações. Verifique se é um AIRAC da NAV Portugal.');
+  finalizeChanges(parsed,false);
+}
 
+// Processamento comum pós-análise — usado pela análise por IA e pela cache partilhada
+function finalizeChanges(parsed,fromCache){
   // Filtrar apenas FIR de Lisboa (excluir Açores e ADs estranhos)
   parsed=parsed.filter(c=>{
     const ad=(c.ad||'').toUpperCase();
@@ -784,8 +825,9 @@ async function runAI(pdfText){
   });
 
   const withPages=changes.filter(c=>analyses[c.id].amdtText).length;
-  lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa); '+withPages+' com páginas da emenda associadas.');prog(100);
+  lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa); '+withPages+' com páginas da emenda associadas'+(fromCache?' — análise obtida da cache partilhada, sem custos de IA':'')+'.');prog(100);
   saveSession();
+  if(!withPages)cachePut(); // sem refinamento a correr: partilhar já o resultado da Fase 1
   setTimeout(function(){buildPanel2();if(withPages)refineDescriptions();},500);
 }
 
@@ -841,6 +883,7 @@ async function refineDescriptions(){
     filterTable();saveSession();
   }
   refineRunning=false;
+  cachePut(); // análise completa (descrições, categorias, acções): partilhar na cache
   strip.innerHTML=base+'<span style="margin-left:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;white-space:nowrap">✓ Refinado com o texto da emenda ('+updated+' descrições'+(recat?'; '+recat+' categorias corrigidas e sistemas revalidados':'')+')</span>';
   setStatus('Refinamento concluído: '+updated+' descrição(ões) melhoradas'+(recat?', '+recat+' categoria(s) corrigida(s) com revalidação de sistemas':'')+'.');
 }
@@ -1678,6 +1721,7 @@ function openHelp(){
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">⇄ Comparação de alterações</h4>';
   h+='<p style="font-size:12px;margin-bottom:6px">O botão <strong>⇄ Comparação de alterações</strong> abre, lado a lado, a página do eAIP em vigor (esquerda) e a página correspondente da emenda (direita), alinhadas pelo cabeçalho (ex. ENR 4.1 - 3). O que a emenda acrescenta fica <span class="d-add">a amarelo</span>; o que desaparece do eAIP fica <span class="d-del">riscado a vermelho</span>. Use ‹ › (ou ← →) para percorrer as alterações e ▲ ▼ (ou ↑ ↓) para saltar de diferença em diferença — as duas colunas posicionam-se no mesmo ponto; o scroll manual também é sincronizado. Os links abrem os PDFs reais.</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">💾 Sessões</h4>';
+  h+='<p style="font-size:12px;margin-bottom:6px"><strong>Cache partilhada:</strong> a primeira análise de cada AIRAC fica guardada no Worker. Quando outra pessoa (ou o próprio) carregar o mesmo PDF, a lista — com descrições refinadas, categorias e acções — chega da cache, <strong>sem custos de IA</strong> e com resultados idênticos para todos. As edições pessoais (selecções, órgãos, descrições) não vão para a cache.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">O trabalho é guardado automaticamente neste browser, por número de AIRAC: selecções, órgãos, sistemas, descrições e remoções. Pode fechar o separador e retomar no passo 1. <strong>⬇ Exportar sessão</strong> descarrega um JSON para arquivo ou para continuar noutro computador (<strong>⬆ Importar JSON</strong>).</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, <strong>✨ Gerar N descrições</strong> cria com IA as descrições de todos os itens que ainda não a têm, uma chamada por item.</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">⚙ Acção e validação do impacto</h4>';
@@ -1800,6 +1844,7 @@ function resetAll(){
   if(!confirm('Limpar o ecrã e voltar ao início? (a sessão guardada mantém-se na lista do passo 1 e pode ser retomada)'))return;
   changes=[];analyses={};meta={};curId=null;eaipCache={};
   initialSelection=null;removedItems={};dupFlags={};impactScope=[];
+  cacheKey=null;cacheHit=false;
   document.getElementById('fi').value='';
   document.getElementById('progWrap').style.display='none';
   document.getElementById('progLog').textContent='';
