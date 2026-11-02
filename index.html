@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.2</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.3</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -474,7 +474,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.2
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.3
   </div>
 </div>
 
@@ -1303,29 +1303,40 @@ async function computeDupProposals(){
   try{dupProposals=await aiDupProposals();}
   catch(e){dupProposals='failed';}
   dupComputing=false;
+  // Entradas antigas da cache (sem duplicados guardados): actualizar para toda a gente
+  if(cacheHit&&cacheKey&&Array.isArray(dupProposals)){
+    try{fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_cachePut:cacheKey,data:{v:1,savedAt:new Date().toISOString(),meta:meta,changes:changes,dupProposals:dupProposals}})});}catch(e){}
+  }
   if(pendingDupApply){
     pendingDupApply=false;
     applyDupProposalsToScope();
     dupDetecting=false;
     updBtn();renderImpact();saveSession();
+    const ng=Array.isArray(dupProposals)?dupProposals.length:0;
+    setStatus(ng?'Verificação de duplicados concluída: '+ng+' grupo(s) identificado(s).':'Verificação de duplicados concluída: a IA não identificou duplicados neste AIRAC.');
   }
 }
 function applyDupProposalsToScope(){
   if(dupProposals==='failed'){try{detectDuplicatesHeuristic();}catch(e){}return;}
   const scope={};impactScope.forEach(function(id){if(!removedItems[id])scope[id]=1;});
   (dupProposals||[]).forEach(function(g){
-    const keeper=changes.find(x=>x.id===String(g.keeper));
-    if(!keeper||!scope[keeper.id])return;
-    (g.dups||[]).forEach(function(d){
-      const did=String((d&&d.id)!==undefined?d.id:d);
-      if(did===keeper.id||!scope[did])return;
-      if(d&&d.chart_only){
-        removedItems[did]={reason:'auto',primary:keeper.description};
-        analyses[did].selected=false;
-        const rc=document.querySelector('.rc[data-id="'+did+'"]');if(rc)rc.checked=false;
+    // Membros do grupo dentro da selecção actual (o keeper proposto pode estar fora dela)
+    const members=[{id:String(g.keeper),chart_only:false}].concat(
+      (g.dups||[]).map(function(d){return {id:String((d&&d.id)!==undefined?d.id:d),chart_only:!!(d&&d.chart_only)};}));
+    const ins=members.filter(function(m){return scope[m.id];});
+    if(ins.length<2)return; // menos de 2 na selecção: nada a assinalar
+    // Keeper efectivo: o proposto, se seleccionado; senão o primeiro membro de substância; senão o primeiro
+    const k=ins.find(function(m){return m.id===String(g.keeper);})||ins.find(function(m){return !m.chart_only;})||ins[0];
+    const keeper=changes.find(x=>x.id===k.id);if(!keeper)return;
+    ins.forEach(function(m){
+      if(m.id===k.id)return;
+      if(m.chart_only&&!k.chart_only){
+        removedItems[m.id]={reason:'auto',primary:keeper.description};
+        analyses[m.id].selected=false;
+        const rc=document.querySelector('.rc[data-id="'+m.id+'"]');if(rc)rc.checked=false;
       }else{
-        dupFlags[did]=keeper.description;
-        dupReasons[did]=String(g.reason||'');
+        dupFlags[m.id]=keeper.description;
+        dupReasons[m.id]=String(g.reason||'');
       }
     });
   });
@@ -1428,6 +1439,8 @@ function renderImpact(){
   if(noDescN>0)h+='<button class="btn btn-sm" id="btnGenAll" onclick="genAllDesc()" style="background:#fdf0ec;border:1px solid var(--nav3);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Gera com IA a descrição de impacto de todos os itens que ainda não a têm">✨ Gerar '+noDescN+' descrição(ões)</button>';
   if(dupDetecting)h+='<span style="background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;margin-left:12px;white-space:nowrap"><span class="spin"></span> A identificar duplicados (uma única vez por AIRAC)...</span>';
   if(dupN>0)h+='<button class="btn btn-sm" onclick="openDupReview()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Abre os duplicados prováveis agrupados: decide item a item o que fica e o que sai, com comparação das páginas do PDF lado a lado">👁 Rever '+dupN+' duplicado(s)</button>';
+  if(!dupDetecting&&Array.isArray(dupProposals)&&dupN===0&&autoN===0)h+='<span style="background:#f7f7f5;border:1px solid var(--border);border-radius:5px;font-size:11px;color:var(--muted);padding:2px 10px;margin-left:12px;white-space:nowrap">✓ Verificação feita: sem duplicados neste conjunto</span>';
+  if(!dupDetecting&&dupProposals==='failed')h+='<span style="background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;margin-left:12px;white-space:nowrap">⚠ IA indisponível — duplicados verificados por palavras-chave</span>';
   h+='<button class="btn btn-sm" onclick="restoreInitial()" style="background:#fff;border:1px solid var(--border2);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Repõe a selecção original da primeira análise e todas as remoções">↺ Repor análise inicial</button>';
   strip.innerHTML=h;
 
