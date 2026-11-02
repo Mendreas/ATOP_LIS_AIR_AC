@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.9</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.0</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -433,8 +433,24 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
     </div>
     <div class="modal-body" id="dupBody"></div>
     <div class="modal-foot">
+      <button id="dupCmpBtn" class="btn btn-secondary" onclick="openDupCompare()" disabled style="margin-right:auto">⚖ Comparar páginas (0/2)</button>
       <button class="btn btn-secondary" onclick="closeDup()">Cancelar</button>
-      <button class="btn btn-primary" onclick="applyDupRemoval()">✕ Remover seleccionados</button>
+      <button class="btn btn-primary" onclick="applyDupRemoval()">✓ Aplicar decisões</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="dpcBg" onclick="if(event.target===this)closeDupCompare()">
+  <div class="modal" style="max-width:1200px">
+    <div class="modal-hdr">
+      <h3>⚖ Comparar páginas da emenda</h3>
+      <button class="modal-close" onclick="closeDupCompare()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:78vh">
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="flex:1;min-width:0"><div id="dpcHdrA" style="padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px"></div><div id="dpcA"></div></div>
+        <div style="flex:1;min-width:0"><div id="dpcHdrB" style="padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px"></div><div id="dpcB"></div></div>
+      </div>
     </div>
   </div>
 </div>
@@ -456,7 +472,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.9
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.0
   </div>
 </div>
 
@@ -516,6 +532,7 @@ const AD_ORG={'LPPT':['TWRLIS','CCLIS'],'LPPR':['TWRPOR'],'LPCS':['TWRCAS'],'LPF
 const EAIP='https://ais.nav.pt/wp-content/uploads/AIS_Files/eAIP_Current/eAIP_Online/eAIP/pdf/';
 
 let changes=[],analyses={},meta={},curId=null,eaipCache={},eaipPagesCache={};
+let amdtPdfBuf=null,amdtPdfDoc=null; // PDF da emenda em memória, para desenhar páginas na comparação
 // Cache partilhada (Cloudflare KV via Worker): a 1ª análise de cada AIRAC paga; as seguintes são gratuitas
 let cacheKey=null,cacheHit=false;
 async function sha256hex(s){
@@ -712,7 +729,10 @@ function doFile(f){
   (async()=>{
     try{
       lg('A extrair texto completo do PDF...');prog(15);
-      const pages=await pdfToPages({data:await f.arrayBuffer()},9999,(i,n)=>{lg('  página '+i+' de '+n+'...');prog(15+Math.round(15*i/n));});
+      const _buf=await f.arrayBuffer();
+      amdtPdfBuf=_buf.slice(0); // cópia para a comparação visual (o PDF.js consome o original)
+      if(amdtPdfDoc){try{amdtPdfDoc.destroy();}catch(e){}amdtPdfDoc=null;}
+      const pages=await pdfToPages({data:_buf},9999,(i,n)=>{lg('  página '+i+' de '+n+'...');prog(15+Math.round(15*i/n));});
       const full=pages.join('\n');
       // Sumário = páginas até à lista "Insert / remove the pages" (secções 1, 2 e 3 do amendment)
       let summaryEnd=Math.min(pages.length-1,5);
@@ -1380,7 +1400,7 @@ function renderImpact(){
   const noDescN=activeIds.filter(id=>!(analyses[id].desc&&analyses[id].desc.length>5)).length;
   if(noDescN>0)h+='<button class="btn btn-sm" id="btnGenAll" onclick="genAllDesc()" style="background:#fdf0ec;border:1px solid var(--nav3);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Gera com IA a descrição de impacto de todos os itens que ainda não a têm">✨ Gerar '+noDescN+' descrição(ões)</button>';
   if(dupDetecting)h+='<span style="background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;margin-left:12px;white-space:nowrap"><span class="spin"></span> A identificar duplicados com IA...</span>';
-  if(dupN>0)h+='<button class="btn btn-sm" onclick="openDupReview()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Abre os duplicados prováveis agrupados: escolhe qual o item que fica, compara os textos da emenda e decide quais remover">👁 Rever '+dupN+' duplicado(s)</button>';
+  if(dupN>0)h+='<button class="btn btn-sm" onclick="openDupReview()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Abre os duplicados prováveis agrupados: decide item a item o que fica e o que sai, com comparação das páginas do PDF lado a lado">👁 Rever '+dupN+' duplicado(s)</button>';
   h+='<button class="btn btn-sm" onclick="restoreInitial()" style="background:#fff;border:1px solid var(--border2);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Repõe a selecção original da primeira análise e todas as remoções">↺ Repor análise inicial</button>';
   strip.innerHTML=h;
 
@@ -1463,23 +1483,24 @@ function restoreItem(id){
   updBtn();renderImpact();saveSession();setStatus('Alteração reposta.');
 }
 
-// Revisão de duplicados: o operador vê cada grupo completo, escolhe QUAL o item
-// que fica (rádio), compara os textos da emenda (📄 Texto) e decide quais remover.
-let dupGroups=[];
+// Revisão de duplicados: decisão item a item (✓ Fica / ✕ Remover) — por omissão a
+// sugestão fica e as restantes saem, mas o operador pode manter todas. A comparação
+// ⚖ desenha as páginas reais do PDF da emenda lado a lado (2 itens à escolha).
+let dupGroups=[],dupCmpSel=[];
 function openDupReview(){
   const ids=impactScope.filter(id=>dupFlags[id]&&!removedItems[id]);
   if(!ids.length){setStatus('Sem duplicados por rever.');return;}
-  // Construir grupos: o "primário" sugerido + os candidatos que partilham o tema
   const byPrim={};
   ids.forEach(function(id){const p=dupFlags[id];(byPrim[p]=byPrim[p]||[]).push(id);});
-  dupGroups=[];
+  dupGroups=[];dupCmpSel=[];
   Object.keys(byPrim).forEach(function(p){
     const pc=changes.find(x=>x.description===p&&!removedItems[x.id]);
     const members=[];
     if(pc)members.push(pc.id);
     byPrim[p].forEach(function(id){if(!members.includes(id))members.push(id);});
-    const reason=dupReasons[byPrim[p][0]]||'';
-    if(members.length>1)dupGroups.push({members:members,keeper:members[0],reason:reason});
+    if(members.length<2)return;
+    const state={};members.forEach(function(id,mi){state[id]=mi===0?'keep':'remove';});
+    dupGroups.push({members:members,suggested:members[0],state:state,reason:dupReasons[byPrim[p][0]]||''});
   });
   if(!dupGroups.length){setStatus('Sem duplicados por rever.');return;}
   renderDupGroups();
@@ -1487,27 +1508,29 @@ function openDupReview(){
 }
 function renderDupGroups(){
   const b=document.getElementById('dupBody');
-  let h='<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Em cada grupo, escolha com o círculo <strong style="color:#166534">qual o item que fica</strong> — a sugestão da aplicação vem pré-seleccionada, mas a decisão é sua. Os restantes ficam marcados para remoção; desmarque os que quiser <strong>manter</strong>. Use <strong>📄 Texto</strong> para ver o texto da emenda de cada item e comparar antes de decidir. Os removidos vão para a secção <strong>🗑 Removidos</strong> e podem ser repostos a qualquer momento.</p>';
+  let h='<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Para cada item escolha <strong style="color:#166534">✓ Fica</strong> ou <strong style="color:#b91c1c">✕ Remover</strong>. Por omissão a sugestão da aplicação fica e as restantes saem — mas a decisão é sua: se concluir que não são duplicados, marque todas como Fica. Para comparar, marque <strong>⚖</strong> em dois itens e clique <strong>⚖ Comparar páginas</strong> (em baixo) para ver as páginas reais do PDF lado a lado. Os removidos vão para a secção <strong>🗑 Removidos</strong> e podem ser repostos.</p>';
   dupGroups.forEach(function(g,gi){
     h+='<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden">';
     if(g.reason)h+='<div style="background:#fdf8f5;border-bottom:1px solid var(--border);padding:8px 12px;font-size:12px;color:var(--nav)"><strong>🛈 Porquê duplicados:</strong> '+esc(g.reason)+'</div>';
     g.members.forEach(function(id,mi){
       const c=changes.find(x=>x.id===id);if(!c)return;
-      const isK=g.keeper===id;
+      const keep=g.state[id]==='keep';
+      const inCmp=dupCmpSel.indexOf(id)>-1;
       const txt=(analyses[id]&&analyses[id].amdtText)||'';
-      h+='<div style="'+(mi>0?'border-top:1px solid var(--border);':'')+'background:'+(isK?'#f0fdf4':'#fff')+'">'+
+      h+='<div style="'+(mi>0?'border-top:1px solid var(--border);':'')+'background:'+(keep?'#f0fdf4':'#fff')+'">'+
         '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px">'+
-        '<input type="radio" name="dupg'+gi+'" '+(isK?'checked':'')+' onchange="setDupKeeper('+gi+',\''+id+'\')" title="Escolher este como o item que fica" style="width:16px;height:16px;accent-color:#166534;margin-top:2px;flex-shrink:0;cursor:pointer">'+
-        (isK
-          ?'<span style="background:#166534;color:#fff;border-radius:5px;font-size:10px;font-weight:700;padding:2px 8px;flex-shrink:0;margin-top:1px">✓ FICA</span>'
-          :'<label style="display:flex;gap:6px;align-items:center;flex-shrink:0;cursor:pointer;margin-top:1px"><input type="checkbox" class="dupchk" data-id="'+id+'" data-g="'+gi+'" checked style="width:15px;height:15px;accent-color:#b91c1c"><span style="background:#fff3f3;color:#b91c1c;border:1px solid #fca5a5;border-radius:5px;font-size:10px;font-weight:700;padding:2px 8px">✕ REMOVER</span></label>')+
-        '<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:1px">'+iPT(c.impact)+'</span>'+
+        '<span style="display:inline-flex;border:1px solid var(--border2);border-radius:7px;overflow:hidden;flex-shrink:0">'+
+          '<button onclick="setDupState('+gi+',\''+id+'\',\'keep\')" style="border:none;cursor:pointer;font-size:10px;font-weight:700;padding:4px 9px;background:'+(keep?'#166534':'#fff')+';color:'+(keep?'#fff':'#999')+'">✓ Fica</button>'+
+          '<button onclick="setDupState('+gi+',\''+id+'\',\'remove\')" style="border:none;border-left:1px solid var(--border2);cursor:pointer;font-size:10px;font-weight:700;padding:4px 9px;background:'+(keep?'#fff':'#b91c1c')+';color:'+(keep?'#999':'#fff')+'">✕ Remover</button>'+
+        '</span>'+
+        '<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:2px">'+iPT(c.impact)+'</span>'+
         '<span style="font-size:12px;flex:1;min-width:0"><strong style="color:var(--nav)">'+esc(c.ad+(c.section?' '+c.section:''))+'</strong> — '+esc(c.description)+'</span>'+
+        '<button onclick="togDupCmp(\''+id+'\')" title="Marcar para a comparação lado a lado (escolha 2 itens)" class="btn btn-sm" style="flex-shrink:0;font-size:11px;padding:3px 10px;'+(inCmp?'background:var(--nav);color:#fff;border:1px solid var(--nav)':'background:#fff;border:1px solid var(--border2);color:var(--nav)')+'">⚖'+(inCmp?' '+(dupCmpSel.indexOf(id)+1):'')+'</button>'+
         '<button class="btn btn-secondary btn-sm" style="flex-shrink:0;font-size:10px;padding:3px 10px" onclick="togDupTxt(\''+gi+'_'+id+'\')">📄 Texto</button>'+
         '</div>'+
-        '<div id="duptxt_'+gi+'_'+id+'" style="display:none;padding:0 12px 12px 38px">'+
+        '<div id="duptxt_'+gi+'_'+id+'" style="display:none;padding:0 12px 12px 12px">'+
           '<pre style="white-space:pre-wrap;font-family:Cascadia Code,Consolas,monospace;font-size:11px;line-height:1.6;max-height:220px;overflow-y:auto;margin:0;padding:10px 12px;background:#fdf8f5;border:1px solid var(--border);border-left:3px solid var(--nav3);border-radius:8px;color:var(--text)">'+
-          (txt?esc(txt):'(Sem texto de substituição para esta secção — normalmente é uma carta/gráfico ou a secção não foi encontrada na emenda.)')+
+          (txt?esc(txt):'(Sem texto de substituição para esta secção — normalmente é uma carta/gráfico.)')+
           '</pre>'+
         '</div>'+
       '</div>';
@@ -1515,34 +1538,96 @@ function renderDupGroups(){
     h+='</div>';
   });
   b.innerHTML=h;
+  updDupCmpBtn();
 }
-function setDupKeeper(gi,id){dupGroups[gi].keeper=id;renderDupGroups();}
+function setDupState(gi,id,st){dupGroups[gi].state[id]=st;renderDupGroups();}
+function togDupCmp(id){
+  const i=dupCmpSel.indexOf(id);
+  if(i>-1)dupCmpSel.splice(i,1);
+  else{dupCmpSel.push(id);if(dupCmpSel.length>2)dupCmpSel.shift();}
+  renderDupGroups();
+}
+function updDupCmpBtn(){
+  const btn=document.getElementById('dupCmpBtn');if(!btn)return;
+  btn.disabled=dupCmpSel.length!==2;
+  btn.textContent='⚖ Comparar páginas ('+dupCmpSel.length+'/2)';
+}
 function togDupTxt(k){const el=document.getElementById('duptxt_'+k);if(el)el.style.display=el.style.display==='none'?'block':'none';}
 function closeDup(){document.getElementById('dupBg').classList.remove('open');}
 function applyDupRemoval(){
+  for(let gi=0;gi<dupGroups.length;gi++){
+    const g=dupGroups[gi];
+    if(!g.members.some(id=>g.state[id]==='keep')){
+      alert('Há um grupo com todos os itens marcados para remover — pelo menos um tem de ficar.');return;
+    }
+  }
   let n=0;
-  dupGroups.forEach(function(g,gi){
-    const keepC=changes.find(x=>x.id===g.keeper);
-    const keepDesc=keepC?keepC.description:'';
+  dupGroups.forEach(function(g){
+    const kept=g.members.filter(id=>g.state[id]==='keep');
+    const primC=changes.find(x=>x.id===(kept.indexOf(g.suggested)>-1?g.suggested:kept[0]));
+    const primDesc=primC?primC.description:'';
     g.members.forEach(function(id){
-      if(id===g.keeper)return;
-      const ch=document.querySelector('.dupchk[data-id="'+id+'"][data-g="'+gi+'"]');
-      if(ch&&ch.checked){
-        removedItems[id]={reason:'dup',primary:keepDesc};
-        analyses[id].selected=false;
-        const rc=document.querySelector('.rc[data-id="'+id+'"]');if(rc)rc.checked=false;
-        n++;
-      }else{
-        dupFlags[id]=keepDesc; // mantido: o aviso passa a apontar para o item escolhido
-      }
+      if(g.state[id]==='keep'){delete dupFlags[id];delete dupReasons[id];return;}
+      removedItems[id]={reason:'dup',primary:primDesc};
+      analyses[id].selected=false;
+      const rc=document.querySelector('.rc[data-id="'+id+'"]');if(rc)rc.checked=false;
+      delete dupFlags[id];delete dupReasons[id];
+      n++;
     });
-    delete dupFlags[g.keeper]; // o escolhido deixa de estar marcado como duplicado
   });
   closeDup();
-  if(!n){updBtn();renderImpact();saveSession();setStatus('Nenhum item removido.');return;}
   updBtn();renderImpact();saveSession();
-  setStatus(n+' duplicado(s) removido(s) — pode repô-los na secção Removidos.');
+  setStatus(n?n+' duplicado(s) removido(s) — pode repô-los na secção Removidos.':'Nenhum item removido — os itens revistos deixam de estar marcados como duplicados.');
 }
+
+// ── ⚖ Comparação visual: páginas reais do PDF da emenda, lado a lado ──
+async function getAmdtDoc(){
+  if(amdtPdfDoc)return amdtPdfDoc;
+  if(!amdtPdfBuf)return null;
+  await loadPdfJs();
+  amdtPdfDoc=await window.pdfjsLib.getDocument({data:amdtPdfBuf.slice(0)}).promise;
+  return amdtPdfDoc;
+}
+function openDupCompare(){
+  if(dupCmpSel.length!==2)return;
+  document.getElementById('dpcBg').classList.add('open');
+  ['A','B'].forEach(function(S,ix){
+    const id=dupCmpSel[ix];const c=changes.find(x=>x.id===id);if(!c)return;
+    document.getElementById('dpcHdr'+S).innerHTML='<strong style="color:var(--nav);font-size:13px">'+esc(c.ad+' '+(c.section||''))+'</strong><div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">'+esc(c.description)+'</div>';
+    const el=document.getElementById('dpc'+S);
+    el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:20px 0"><span class="spin"></span> A desenhar páginas…</div>';
+    renderAmdtPages(el,c);
+  });
+}
+async function renderAmdtPages(el,c){
+  const ps=pagesForRef(c.ad,c.section).slice(0,4);
+  let doc=null;try{doc=await getAmdtDoc();}catch(e){}
+  if(!doc||!ps.length){
+    const txt=(analyses[c.id]&&analyses[c.id].amdtText)||'';
+    el.innerHTML='<div style="font-size:11px;color:#92400e;background:#fff8e1;border:1px solid #fbbf24;border-radius:7px;padding:8px 10px;margin-bottom:8px">'+
+      (!doc?'O PDF da emenda já não está em memória (sessão retomada) — volte a carregar o PDF no passo 1 para ver as páginas.':'Sem páginas de substituição indexadas para esta secção.')+'</div>'+
+      (txt?'<pre style="white-space:pre-wrap;font-family:Consolas,monospace;font-size:11px;line-height:1.6;max-height:420px;overflow-y:auto;margin:0;padding:10px;background:#fdf8f5;border:1px solid var(--border);border-radius:8px">'+esc(txt)+'</pre>':'');
+    return;
+  }
+  el.innerHTML='';
+  for(const p of ps){
+    const lbl=document.createElement('div');
+    lbl.style.cssText='font-size:10px;color:var(--muted);margin:6px 0 3px';
+    lbl.textContent='página '+p.i+' do PDF — '+p.key;
+    el.appendChild(lbl);
+    const pg=await doc.getPage(p.i);
+    const vp0=pg.getViewport({scale:1});
+    const w=el.clientWidth||520;
+    const ratio=window.devicePixelRatio||1;
+    const vp=pg.getViewport({scale:Math.max(0.5,(w-6)/vp0.width)*ratio});
+    const cv=document.createElement('canvas');
+    cv.width=vp.width;cv.height=vp.height;
+    cv.style.cssText='width:100%;border:1px solid var(--border);border-radius:6px;background:#fff;box-shadow:0 1px 4px rgba(93,46,70,0.08)';
+    el.appendChild(cv);
+    await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+  }
+}
+function closeDupCompare(){document.getElementById('dpcBg').classList.remove('open');}
 
 function restoreInitialSel(){
   if(initialSelection===null){alert('Ainda não foi feita nenhuma análise de impacto.');return;}
@@ -1859,7 +1944,7 @@ function openHelp(){
   h+='<p style="font-size:12px;margin-bottom:6px">Cada item pode ter uma etiqueta de <strong>Acção</strong> sobre os registos dos sistemas: <strong>INSERIR</strong> (registo novo), <strong>MODIFICAR</strong> (registo alterado ou retirada parcial, ex. VOR retirado mas DME mantido), <strong>ELIMINAR</strong> (registo removido) ou <strong>SEM REGISTO</strong> (alteração editorial/carta). É atribuída pela IA na fase de refinamento, a partir do texto real da emenda.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Na mesma fase, as <strong>categorias</strong> são verificadas contra o texto da emenda e os sistemas/órgãos são <strong>revalidados</strong> — excepto nos itens que já editou manualmente, que são sempre respeitados. Passe o rato sobre um sistema para ver <strong>porque foi atribuído</strong> (categoria ou termo encontrado).</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🔁 Duplicados e reposição</h4>';
-  h+='<p style="font-size:12px;margin-bottom:6px">Os duplicados são identificados pela <strong>IA</strong>, que compara o significado das alterações (não apenas palavras em comum) e explica em cada grupo <strong>porquê</strong> os considera a mesma alteração publicada em mais do que uma secção. O botão <strong>👁 Rever duplicados</strong> abre os duplicados prováveis agrupados: em cada grupo <strong>escolhe qual o item que fica</strong> (a sugestão vem pré-seleccionada), compara os textos da emenda com <strong>📄 Texto</strong>, e decide quais remover — nada é removido sem revisão.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">Os duplicados são identificados pela <strong>IA</strong>, que compara o significado das alterações (não apenas palavras em comum) e explica em cada grupo <strong>porquê</strong> os considera a mesma alteração publicada em mais do que uma secção. O botão <strong>👁 Rever duplicados</strong> abre os duplicados prováveis agrupados: a decisão é <strong>item a item</strong>: cada entrada tem ✓ Fica / ✕ Remover (por omissão fica a sugestão e saem as restantes, mas pode manter todas). Para decidir, pode ver o texto (📄) ou marcar dois itens com <strong>⚖</strong> e comparar as <strong>páginas reais do PDF lado a lado</strong>. Nada é removido sem revisão.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, alterações que repetem o mesmo tema (ex.: um navaid retirado e as cartas que apenas mostram essa remoção) são agrupadas: a entrada principal é mantida e as cartas duplicadas vão para a secção <strong>Removidos</strong>, no fundo da página.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Todas as remoções são reversíveis com o botão <strong>↩ Repor</strong>. O botão <strong>↺ Repor análise inicial</strong> restaura a selecção original da primeira análise.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Os itens removidos não desaparecem do registo: a nota técnica inclui uma secção final <strong>"Itens revistos sem acção nos sistemas"</strong> que documenta cada exclusão e o seu motivo.</p>';
@@ -1986,6 +2071,7 @@ function resetAll(){
   if(!confirm('Limpar o ecrã e voltar ao início? (a sessão guardada mantém-se na lista do passo 1 e pode ser retomada)'))return;
   changes=[];analyses={};meta={};curId=null;eaipCache={};
   initialSelection=null;removedItems={};dupFlags={};dupReasons={};impactScope=[];dupDetecting=false;
+  amdtPdfBuf=null;if(amdtPdfDoc){try{amdtPdfDoc.destroy();}catch(e){}amdtPdfDoc=null;}
   cacheKey=null;cacheHit=false;
   document.getElementById('fi').value='';
   document.getElementById('progWrap').style.display='none';
