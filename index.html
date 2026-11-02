@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.7</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v2.8</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -426,7 +426,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
 </div>
 
 <div class="modal-bg" id="dupBg" onclick="if(event.target===this)closeDup()">
-  <div class="modal" style="max-width:780px">
+  <div class="modal" style="max-width:900px">
     <div class="modal-hdr">
       <h3>⚠️ Rever duplicados prováveis</h3>
       <button class="modal-close" onclick="closeDup()">✕</button>
@@ -456,7 +456,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.7
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v2.8
   </div>
 </div>
 
@@ -1339,7 +1339,7 @@ function renderImpact(){
   if(autoN>0)h+='<span style="background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;margin-left:10px;white-space:nowrap">✓ '+autoN+' actualização(ões) de carta removida(s) — ver secção Removidos ↓</span>';
   const noDescN=activeIds.filter(id=>!(analyses[id].desc&&analyses[id].desc.length>5)).length;
   if(noDescN>0)h+='<button class="btn btn-sm" id="btnGenAll" onclick="genAllDesc()" style="background:#fdf0ec;border:1px solid var(--nav3);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Gera com IA a descrição de impacto de todos os itens que ainda não a têm">✨ Gerar '+noDescN+' descrição(ões)</button>';
-  if(dupN>0)h+='<button class="btn btn-sm" onclick="openDupReview()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Abre a lista dos duplicados prováveis para revisão: vê qual o item que fica e escolhe quais remover">👁 Rever '+dupN+' duplicado(s)</button>';
+  if(dupN>0)h+='<button class="btn btn-sm" onclick="openDupReview()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Abre os duplicados prováveis agrupados: escolhe qual o item que fica, compara os textos da emenda e decide quais remover">👁 Rever '+dupN+' duplicado(s)</button>';
   h+='<button class="btn btn-sm" onclick="restoreInitial()" style="background:#fff;border:1px solid var(--border2);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Repõe a selecção original da primeira análise e todas as remoções">↺ Repor análise inicial</button>';
   strip.innerHTML=h;
 
@@ -1422,47 +1422,83 @@ function restoreItem(id){
   updBtn();renderImpact();saveSession();setStatus('Alteração reposta.');
 }
 
-// Revisão de duplicados: o operador vê cada grupo (o que FICA e os candidatos a remover)
-// e escolhe o que sai. Nada é removido sem passar por aqui.
+// Revisão de duplicados: o operador vê cada grupo completo, escolhe QUAL o item
+// que fica (rádio), compara os textos da emenda (📄 Texto) e decide quais remover.
+let dupGroups=[];
 function openDupReview(){
   const ids=impactScope.filter(id=>dupFlags[id]&&!removedItems[id]);
   if(!ids.length){setStatus('Sem duplicados por rever.');return;}
+  // Construir grupos: o "primário" sugerido + os candidatos que partilham o tema
+  const byPrim={};
+  ids.forEach(function(id){const p=dupFlags[id];(byPrim[p]=byPrim[p]||[]).push(id);});
+  dupGroups=[];
+  Object.keys(byPrim).forEach(function(p){
+    const pc=changes.find(x=>x.description===p&&!removedItems[x.id]);
+    const members=[];
+    if(pc)members.push(pc.id);
+    byPrim[p].forEach(function(id){if(!members.includes(id))members.push(id);});
+    if(members.length>1)dupGroups.push({members:members,keeper:members[0]});
+  });
+  if(!dupGroups.length){setStatus('Sem duplicados por rever.');return;}
+  renderDupGroups();
+  document.getElementById('dupBg').classList.add('open');
+}
+function renderDupGroups(){
   const b=document.getElementById('dupBody');
-  let h='<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Cada grupo mostra o item que <strong style="color:#166534">fica</strong> e, por baixo, o(s) duplicado(s) candidato(s) a remoção. Desmarque os que quiser <strong>manter</strong>. Os removidos vão para a secção <strong>🗑 Removidos</strong> e podem ser repostos a qualquer momento.</p>';
-  const groups={};
-  ids.forEach(function(id){const p=dupFlags[id];(groups[p]=groups[p]||[]).push(id);});
-  Object.keys(groups).forEach(function(p){
+  let h='<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Em cada grupo, escolha com o círculo <strong style="color:#166534">qual o item que fica</strong> — a sugestão da aplicação vem pré-seleccionada, mas a decisão é sua. Os restantes ficam marcados para remoção; desmarque os que quiser <strong>manter</strong>. Use <strong>📄 Texto</strong> para ver o texto da emenda de cada item e comparar antes de decidir. Os removidos vão para a secção <strong>🗑 Removidos</strong> e podem ser repostos a qualquer momento.</p>';
+  dupGroups.forEach(function(g,gi){
     h+='<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden">';
-    const pc=changes.find(x=>x.description===p);
-    h+='<div style="background:#f0fdf4;border-bottom:1px solid #bbe5c8;padding:9px 12px;font-size:12px;display:flex;gap:8px;align-items:flex-start">'+
-       '<span style="background:#166534;color:#fff;border-radius:5px;font-size:10px;font-weight:700;padding:2px 8px;flex-shrink:0">✓ FICA</span>'+
-       '<span>'+(pc?'<strong style="color:var(--nav)">'+esc(pc.ad+(pc.section?' '+pc.section:''))+'</strong> — ':'')+esc(p)+'</span></div>';
-    groups[p].forEach(function(id){
+    g.members.forEach(function(id,mi){
       const c=changes.find(x=>x.id===id);if(!c)return;
-      h+='<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-top:1px solid var(--border);cursor:pointer;background:#fff">'+
-        '<input type="checkbox" class="dupchk" data-id="'+id+'" checked style="margin-top:3px;width:15px;height:15px;accent-color:#b91c1c;flex-shrink:0">'+
-        '<span style="background:#fff3f3;color:#b91c1c;border:1px solid #fca5a5;border-radius:5px;font-size:10px;font-weight:700;padding:2px 8px;flex-shrink:0;margin-top:1px">✕ REMOVER</span>'+
+      const isK=g.keeper===id;
+      const txt=(analyses[id]&&analyses[id].amdtText)||'';
+      h+='<div style="'+(mi>0?'border-top:1px solid var(--border);':'')+'background:'+(isK?'#f0fdf4':'#fff')+'">'+
+        '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px">'+
+        '<input type="radio" name="dupg'+gi+'" '+(isK?'checked':'')+' onchange="setDupKeeper('+gi+',\''+id+'\')" title="Escolher este como o item que fica" style="width:16px;height:16px;accent-color:#166534;margin-top:2px;flex-shrink:0;cursor:pointer">'+
+        (isK
+          ?'<span style="background:#166534;color:#fff;border-radius:5px;font-size:10px;font-weight:700;padding:2px 8px;flex-shrink:0;margin-top:1px">✓ FICA</span>'
+          :'<label style="display:flex;gap:6px;align-items:center;flex-shrink:0;cursor:pointer;margin-top:1px"><input type="checkbox" class="dupchk" data-id="'+id+'" data-g="'+gi+'" checked style="width:15px;height:15px;accent-color:#b91c1c"><span style="background:#fff3f3;color:#b91c1c;border:1px solid #fca5a5;border-radius:5px;font-size:10px;font-weight:700;padding:2px 8px">✕ REMOVER</span></label>')+
         '<span class="imp imp-'+c.impact+'" style="flex-shrink:0;margin-top:1px">'+iPT(c.impact)+'</span>'+
-        '<span style="font-size:12px"><strong style="color:var(--nav)">'+esc(c.ad+(c.section?' '+c.section:''))+'</strong> — '+esc(c.description)+'</span></label>';
+        '<span style="font-size:12px;flex:1;min-width:0"><strong style="color:var(--nav)">'+esc(c.ad+(c.section?' '+c.section:''))+'</strong> — '+esc(c.description)+'</span>'+
+        '<button class="btn btn-secondary btn-sm" style="flex-shrink:0;font-size:10px;padding:3px 10px" onclick="togDupTxt(\''+gi+'_'+id+'\')">📄 Texto</button>'+
+        '</div>'+
+        '<div id="duptxt_'+gi+'_'+id+'" style="display:none;padding:0 12px 12px 38px">'+
+          '<pre style="white-space:pre-wrap;font-family:Cascadia Code,Consolas,monospace;font-size:11px;line-height:1.6;max-height:220px;overflow-y:auto;margin:0;padding:10px 12px;background:#fdf8f5;border:1px solid var(--border);border-left:3px solid var(--nav3);border-radius:8px;color:var(--text)">'+
+          (txt?esc(txt):'(Sem texto de substituição para esta secção — normalmente é uma carta/gráfico ou a secção não foi encontrada na emenda.)')+
+          '</pre>'+
+        '</div>'+
+      '</div>';
     });
     h+='</div>';
   });
   b.innerHTML=h;
-  document.getElementById('dupBg').classList.add('open');
 }
+function setDupKeeper(gi,id){dupGroups[gi].keeper=id;renderDupGroups();}
+function togDupTxt(k){const el=document.getElementById('duptxt_'+k);if(el)el.style.display=el.style.display==='none'?'block':'none';}
 function closeDup(){document.getElementById('dupBg').classList.remove('open');}
 function applyDupRemoval(){
-  const chks=[...document.querySelectorAll('.dupchk:checked')];
-  closeDup();
-  if(!chks.length){setStatus('Nenhum duplicado seleccionado — nada foi removido.');return;}
-  chks.forEach(function(ch){
-    const id=ch.dataset.id;
-    removedItems[id]={reason:'dup',primary:dupFlags[id]};
-    analyses[id].selected=false;
-    const rc=document.querySelector('.rc[data-id="'+id+'"]');if(rc)rc.checked=false;
+  let n=0;
+  dupGroups.forEach(function(g,gi){
+    const keepC=changes.find(x=>x.id===g.keeper);
+    const keepDesc=keepC?keepC.description:'';
+    g.members.forEach(function(id){
+      if(id===g.keeper)return;
+      const ch=document.querySelector('.dupchk[data-id="'+id+'"][data-g="'+gi+'"]');
+      if(ch&&ch.checked){
+        removedItems[id]={reason:'dup',primary:keepDesc};
+        analyses[id].selected=false;
+        const rc=document.querySelector('.rc[data-id="'+id+'"]');if(rc)rc.checked=false;
+        n++;
+      }else{
+        dupFlags[id]=keepDesc; // mantido: o aviso passa a apontar para o item escolhido
+      }
+    });
+    delete dupFlags[g.keeper]; // o escolhido deixa de estar marcado como duplicado
   });
+  closeDup();
+  if(!n){updBtn();renderImpact();saveSession();setStatus('Nenhum item removido.');return;}
   updBtn();renderImpact();saveSession();
-  setStatus(chks.length+' duplicado(s) removido(s) — pode repô-los na secção Removidos.');
+  setStatus(n+' duplicado(s) removido(s) — pode repô-los na secção Removidos.');
 }
 
 function restoreInitialSel(){
@@ -1780,7 +1816,7 @@ function openHelp(){
   h+='<p style="font-size:12px;margin-bottom:6px">Cada item pode ter uma etiqueta de <strong>Acção</strong> sobre os registos dos sistemas: <strong>INSERIR</strong> (registo novo), <strong>MODIFICAR</strong> (registo alterado ou retirada parcial, ex. VOR retirado mas DME mantido), <strong>ELIMINAR</strong> (registo removido) ou <strong>SEM REGISTO</strong> (alteração editorial/carta). É atribuída pela IA na fase de refinamento, a partir do texto real da emenda.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Na mesma fase, as <strong>categorias</strong> são verificadas contra o texto da emenda e os sistemas/órgãos são <strong>revalidados</strong> — excepto nos itens que já editou manualmente, que são sempre respeitados. Passe o rato sobre um sistema para ver <strong>porque foi atribuído</strong> (categoria ou termo encontrado).</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🔁 Duplicados e reposição</h4>';
-  h+='<p style="font-size:12px;margin-bottom:6px">O botão <strong>👁 Rever duplicados</strong> abre a lista dos duplicados prováveis agrupados: em cada grupo vê o item que <strong>fica</strong> e escolhe quais remover — nada é removido sem revisão.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">O botão <strong>👁 Rever duplicados</strong> abre os duplicados prováveis agrupados: em cada grupo <strong>escolhe qual o item que fica</strong> (a sugestão vem pré-seleccionada), compara os textos da emenda com <strong>📄 Texto</strong>, e decide quais remover — nada é removido sem revisão.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, alterações que repetem o mesmo tema (ex.: um navaid retirado e as cartas que apenas mostram essa remoção) são agrupadas: a entrada principal é mantida e as cartas duplicadas vão para a secção <strong>Removidos</strong>, no fundo da página.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Todas as remoções são reversíveis com o botão <strong>↩ Repor</strong>. O botão <strong>↺ Repor análise inicial</strong> restaura a selecção original da primeira análise.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Os itens removidos não desaparecem do registo: a nota técnica inclui uma secção final <strong>"Itens revistos sem acção nos sistemas"</strong> que documenta cada exclusão e o seu motivo.</p>';
