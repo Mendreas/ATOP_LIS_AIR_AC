@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.1</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.2</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -474,7 +474,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.1
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.2
   </div>
 </div>
 
@@ -545,7 +545,7 @@ async function sha256hex(s){
 }
 function cachePut(){
   if(!cacheKey||cacheHit||!changes.length)return;
-  const payload={v:1,savedAt:new Date().toISOString(),meta:meta,changes:changes};
+  const payload={v:1,savedAt:new Date().toISOString(),meta:meta,changes:changes,dupProposals:(Array.isArray(dupProposals)?dupProposals:[])};
   fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_cachePut:cacheKey,data:payload})})
     .then(r=>r.json())
     .then(d=>{if(d&&d.ok)setStatus('Análise partilhada na cache — a próxima análise deste AIRAC, por qualquer pessoa, será gratuita.');})
@@ -762,6 +762,7 @@ function doFile(f){
           const cd=await cr.json();
           if(cd&&cd.cached&&cd.cached.changes&&cd.cached.changes.length){
             cacheHit=true;meta=cd.cached.meta||{};
+            dupProposals=Array.isArray(cd.cached.dupProposals)?cd.cached.dupProposals:null;
             lg('✓ Este AIRAC já foi analisado por alguém em '+(cd.cached.savedAt?new Date(cd.cached.savedAt).toLocaleDateString('pt-PT'):'data desconhecida')+' — a usar a análise da cache, sem custos de IA.');prog(70);
             finalizeChanges(cd.cached.changes,true);
             return;
@@ -868,7 +869,7 @@ function finalizeChanges(parsed,fromCache){
   const withPages=changes.filter(c=>analyses[c.id].amdtText).length;
   lg('✓ OK — '+changes.length+' alterações identificadas (FIR Lisboa); '+withPages+' com páginas da emenda associadas'+(fromCache?' — análise obtida da cache partilhada, sem custos de IA':'')+'.');prog(100);
   saveSession();
-  if(!withPages)cachePut(); // sem refinamento a correr: partilhar já o resultado da Fase 1
+  if(!withPages){(async function(){await computeDupProposals();cachePut();})();} // sem refinamento: calcular duplicados e partilhar já
   setTimeout(function(){buildPanel2();if(withPages)refineDescriptions();},500);
 }
 
@@ -924,7 +925,8 @@ async function refineDescriptions(){
     filterTable();saveSession();
   }
   refineRunning=false;
-  cachePut(); // análise completa (descrições, categorias, acções): partilhar na cache
+  await computeDupProposals(); // duplicados: calculados uma vez, com as descrições finais
+  cachePut(); // análise completa (descrições, categorias, acções, duplicados): partilhar na cache
   strip.innerHTML=base+'<span style="margin-left:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;white-space:nowrap">✓ Refinado com o texto da emenda ('+updated+' descrições'+(recat?'; '+recat+' categorias corrigidas e sistemas revalidados':'')+')</span>';
   setStatus('Refinamento concluído: '+updated+' descrição(ões) melhoradas'+(recat?', '+recat+' categoria(s) corrigida(s) com revalidação de sistemas':'')+'.');
 }
@@ -1269,6 +1271,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 
 // ── PANEL 3 ──
 let initialSelection=null, removedItems={}, dupFlags={}, dupReasons={}, impactScope=[], dupDetecting=false;
+let dupProposals=null, dupComputing=false, pendingDupApply=false; // duplicados: calculados UMA vez por AIRAC e partilhados na cache
 
 function goImpact(){
   // Snapshot da primeira análise (para poder repor mais tarde)
@@ -1283,34 +1286,39 @@ function goImpact(){
   runDupDetection();
 }
 
-// Orquestrador da detecção de duplicados: IA primeiro (julga o significado e
-// explica porquê); se a IA falhar, recua para a heurística por palavras-código.
+// Detecção de duplicados: calculada UMA única vez por AIRAC, depois do refinamento
+// (com as descrições finais), e guardada na cache partilhada. Todas as execuções e
+// todas as pessoas aplicam o MESMO resultado — fim das discrepâncias entre análises.
 async function runDupDetection(){
-  if(dupDetecting)return;
-  dupDetecting=true;renderImpact();
-  try{await detectDuplicatesAI();}
-  catch(e){try{detectDuplicatesHeuristic();}catch(e2){}}
-  dupDetecting=false;
-  updBtn();renderImpact();saveSession();
+  if(Array.isArray(dupProposals)||dupProposals==='failed'){
+    applyDupProposalsToScope();updBtn();renderImpact();saveSession();return;
+  }
+  dupDetecting=true;pendingDupApply=true;renderImpact();
+  computeDupProposals();
 }
-
-async function detectDuplicatesAI(){
-  const act=impactScope.filter(id=>!removedItems[id]);
-  if(act.length<2)return;
-  const items=act.map(function(id){const c=changes.find(x=>x.id===id);return c.id+' | '+c.ad+' '+(c.section||'')+' | '+c.description;}).join('\n');
-  const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:1000,temperature:0,
-    messages:[{role:'user',content:'You are an ATS analyst at NAV Portugal reviewing the change list of ONE AIP amendment. Identify groups of items that report the SAME underlying change published in more than one AIP section or chart. Examples of true duplicates: a navaid withdrawal in the ENR 4.1 table AND the chart(s) that merely depict that withdrawal; the same new heliport listed in GEN and in AD 1.3; the same MAG VAR update of the same navaid(s) republished in ENR 4.1 and in an AD 2.19 section. NOT duplicates: changes about different navaids or subjects; a chart whose change is its own subject (e.g. a SID chart that merely REFERENCES a navaid changed elsewhere); items that are merely related or part of the same campaign but each require their own data record action. Be conservative: when in doubt, do NOT group.\n\nFor each group return: "keeper" = the id of the substantive entry that best carries the data change (prefer the data-table/text entry over charts); "dups" = the other ids, each with "chart_only": true ONLY if that item is a chart/graphic merely depicting the keeper change; "reason" = max 25 words, in Portuguese, saying what the shared underlying change is.\n\nReturn ONLY a JSON array (empty array if no duplicates): [{"keeper":"3","dups":[{"id":"7","chart_only":true},{"id":"9","chart_only":false}],"reason":"..."}]\n\nITEMS (id | section | description):\n'+items}]});
-  const raw=data.content.map(x=>x.text||'').join('');
-  const jm=raw.match(/\[[\s\S]*\]/);if(!jm)return;
-  let arr=[];
-  try{arr=JSON.parse(jm[0]);}
-  catch(e){try{arr=JSON.parse(jm[0].replace(/,\s*([}\]])/g,'$1'));}catch(e2){throw e2;}}
-  arr.forEach(function(g){
+async function computeDupProposals(){
+  if(dupComputing||Array.isArray(dupProposals)||dupProposals==='failed')return;
+  if(refineRunning)return; // o fim do refinamento volta a chamar esta função
+  dupComputing=true;
+  try{dupProposals=await aiDupProposals();}
+  catch(e){dupProposals='failed';}
+  dupComputing=false;
+  if(pendingDupApply){
+    pendingDupApply=false;
+    applyDupProposalsToScope();
+    dupDetecting=false;
+    updBtn();renderImpact();saveSession();
+  }
+}
+function applyDupProposalsToScope(){
+  if(dupProposals==='failed'){try{detectDuplicatesHeuristic();}catch(e){}return;}
+  const scope={};impactScope.forEach(function(id){if(!removedItems[id])scope[id]=1;});
+  (dupProposals||[]).forEach(function(g){
     const keeper=changes.find(x=>x.id===String(g.keeper));
-    if(!keeper||!act.includes(keeper.id)||removedItems[keeper.id])return;
+    if(!keeper||!scope[keeper.id])return;
     (g.dups||[]).forEach(function(d){
       const did=String((d&&d.id)!==undefined?d.id:d);
-      if(did===keeper.id||!act.includes(did)||removedItems[did])return;
+      if(did===keeper.id||!scope[did])return;
       if(d&&d.chart_only){
         removedItems[did]={reason:'auto',primary:keeper.description};
         analyses[did].selected=false;
@@ -1320,6 +1328,22 @@ async function detectDuplicatesAI(){
         dupReasons[did]=String(g.reason||'');
       }
     });
+  });
+}
+async function aiDupProposals(){
+  if(changes.length<2)return [];
+  const items=changes.map(function(c){return c.id+' | '+c.ad+' '+(c.section||'')+' | '+c.description;}).join('\n');
+  const data=await callAPI({model:'claude-sonnet-4-6',max_tokens:1000,temperature:0,
+    messages:[{role:'user',content:'You are an ATS analyst at NAV Portugal reviewing the change list of ONE AIP amendment. Identify groups of items that report the SAME underlying change published in more than one AIP section or chart. Examples of true duplicates: a navaid withdrawal in the ENR 4.1 table AND the chart(s) that merely depict that withdrawal; the same new heliport listed in GEN and in AD 1.3; the same MAG VAR update of the same navaid(s) republished in ENR 4.1 and in an AD 2.19 section. NOT duplicates: changes about different navaids or subjects; a chart whose change is its own subject (e.g. a SID chart that merely REFERENCES a navaid changed elsewhere); items that are merely related or part of the same campaign but each require their own data record action. Be conservative: when in doubt, do NOT group.\n\nFor each group return: "keeper" = the id of the substantive entry that best carries the data change (prefer the data-table/text entry over charts); "dups" = the other ids, each with "chart_only": true ONLY if that item is a chart/graphic merely depicting the keeper change; "reason" = max 25 words, in Portuguese, saying what the shared underlying change is.\n\nReturn ONLY a JSON array (empty array if no duplicates): [{"keeper":"3","dups":[{"id":"7","chart_only":true},{"id":"9","chart_only":false}],"reason":"..."}]\n\nITEMS (id | section | description):\n'+items}]});
+  const raw=data.content.map(x=>x.text||'').join('');
+  const jm=raw.match(/\[[\s\S]*\]/);if(!jm)return [];
+  let arr=[];
+  try{arr=JSON.parse(jm[0]);}
+  catch(e){arr=JSON.parse(jm[0].replace(/,\s*([}\]])/g,'$1'));}
+  // Normalizar
+  return (arr||[]).map(function(g){
+    return {keeper:String(g.keeper),reason:String(g.reason||''),
+      dups:(g.dups||[]).map(function(d){return {id:String((d&&d.id)!==undefined?d.id:d),chart_only:!!(d&&d.chart_only)};})};
   });
 }
 
@@ -1402,7 +1426,7 @@ function renderImpact(){
   if(autoN>0)h+='<span style="background:#f0fdf4;border:1px solid #86efac;border-radius:5px;font-size:11px;color:#166534;padding:2px 10px;margin-left:10px;white-space:nowrap">✓ '+autoN+' actualização(ões) de carta removida(s) — ver secção Removidos ↓</span>';
   const noDescN=activeIds.filter(id=>!(analyses[id].desc&&analyses[id].desc.length>5)).length;
   if(noDescN>0)h+='<button class="btn btn-sm" id="btnGenAll" onclick="genAllDesc()" style="background:#fdf0ec;border:1px solid var(--nav3);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Gera com IA a descrição de impacto de todos os itens que ainda não a têm">✨ Gerar '+noDescN+' descrição(ões)</button>';
-  if(dupDetecting)h+='<span style="background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;margin-left:12px;white-space:nowrap"><span class="spin"></span> A identificar duplicados com IA...</span>';
+  if(dupDetecting)h+='<span style="background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;margin-left:12px;white-space:nowrap"><span class="spin"></span> A identificar duplicados (uma única vez por AIRAC)...</span>';
   if(dupN>0)h+='<button class="btn btn-sm" onclick="openDupReview()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Abre os duplicados prováveis agrupados: decide item a item o que fica e o que sai, com comparação das páginas do PDF lado a lado">👁 Rever '+dupN+' duplicado(s)</button>';
   h+='<button class="btn btn-sm" onclick="restoreInitial()" style="background:#fff;border:1px solid var(--border2);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Repõe a selecção original da primeira análise e todas as remoções">↺ Repor análise inicial</button>';
   strip.innerHTML=h;
@@ -2006,7 +2030,7 @@ function openHelp(){
   h+='<p style="font-size:12px;margin-bottom:6px">Cada item pode ter uma etiqueta de <strong>Acção</strong> sobre os registos dos sistemas: <strong>INSERIR</strong> (registo novo), <strong>MODIFICAR</strong> (registo alterado ou retirada parcial, ex. VOR retirado mas DME mantido), <strong>ELIMINAR</strong> (registo removido) ou <strong>SEM REGISTO</strong> (alteração editorial/carta). É atribuída pela IA na fase de refinamento, a partir do texto real da emenda.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Na mesma fase, as <strong>categorias</strong> são verificadas contra o texto da emenda e os sistemas/órgãos são <strong>revalidados</strong> — excepto nos itens que já editou manualmente, que são sempre respeitados. Passe o rato sobre um sistema para ver <strong>porque foi atribuído</strong> (categoria ou termo encontrado).</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🔁 Duplicados e reposição</h4>';
-  h+='<p style="font-size:12px;margin-bottom:6px">Os duplicados são identificados pela <strong>IA</strong>, que compara o significado das alterações (não apenas palavras em comum) e explica em cada grupo <strong>porquê</strong> os considera a mesma alteração publicada em mais do que uma secção. O botão <strong>👁 Rever duplicados</strong> abre os duplicados prováveis agrupados: a decisão é <strong>item a item</strong>: cada entrada tem ✓ Fica / ✕ Remover (por omissão fica a sugestão e saem as restantes, mas pode manter todas). Para decidir, pode ver o texto (📄) ou marcar dois itens com <strong>⚖</strong> e comparar as <strong>páginas reais do PDF lado a lado</strong>, com uma <strong>🔍 lupa</strong> que amplia com nitidez a zona sob o rato. Nada é removido sem revisão.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">Os duplicados são identificados pela <strong>IA</strong> <strong>uma única vez por AIRAC</strong> (após o refinamento das descrições) e o resultado fica na cache partilhada — todas as pessoas e repetições vêem exactamente os mesmos grupos. A IA compara o significado das alterações (não apenas palavras em comum) e explica em cada grupo <strong>porquê</strong> os considera a mesma alteração publicada em mais do que uma secção. O botão <strong>👁 Rever duplicados</strong> abre os duplicados prováveis agrupados: a decisão é <strong>item a item</strong>: cada entrada tem ✓ Fica / ✕ Remover (por omissão fica a sugestão e saem as restantes, mas pode manter todas). Para decidir, pode ver o texto (📄) ou marcar dois itens com <strong>⚖</strong> e comparar as <strong>páginas reais do PDF lado a lado</strong>, com uma <strong>🔍 lupa</strong> que amplia com nitidez a zona sob o rato. Nada é removido sem revisão.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, alterações que repetem o mesmo tema (ex.: um navaid retirado e as cartas que apenas mostram essa remoção) são agrupadas: a entrada principal é mantida e as cartas duplicadas vão para a secção <strong>Removidos</strong>, no fundo da página.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Todas as remoções são reversíveis com o botão <strong>↩ Repor</strong>. O botão <strong>↺ Repor análise inicial</strong> restaura a selecção original da primeira análise.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Os itens removidos não desaparecem do registo: a nota técnica inclui uma secção final <strong>"Itens revistos sem acção nos sistemas"</strong> que documenta cada exclusão e o seu motivo.</p>';
@@ -2026,7 +2050,7 @@ function snapshot(){
   Object.keys(analyses).forEach(function(k){
     slim[k]=Object.assign({},analyses[k],{eaipText:'',amdtText:''});
   });
-  return {v:1,savedAt:new Date().toISOString(),meta,changes,analyses:slim,removedItems,dupFlags,dupReasons,initialSelection,impactScope,
+  return {v:1,savedAt:new Date().toISOString(),meta,changes,analyses:slim,removedItems,dupFlags,dupReasons,dupProposals:(Array.isArray(dupProposals)?dupProposals:null),initialSelection,impactScope,
     amdtPages:amdtPages.map(p=>({i:p.i,key:p.key,text:p.text.substring(0,12000)}))};
 }
 let saveTimer=null;
@@ -2078,7 +2102,7 @@ function renderSessions(){
 }
 function loadSnapshot(s){
   meta=s.meta||{};changes=s.changes||[];analyses=s.analyses||{};
-  removedItems=s.removedItems||{};dupFlags=s.dupFlags||{};dupReasons=s.dupReasons||{};initialSelection=s.initialSelection||null;impactScope=s.impactScope||[];
+  removedItems=s.removedItems||{};dupFlags=s.dupFlags||{};dupReasons=s.dupReasons||{};dupProposals=Array.isArray(s.dupProposals)?s.dupProposals:null;initialSelection=s.initialSelection||null;impactScope=s.impactScope||[];
   amdtPages=s.amdtPages||[];eaipCache={};
   changes.forEach(c=>{
     if(!analyses[c.id])analyses[c.id]={organs:[],systems:[],systemsDetail:[],desc:'',eaipText:'',diffText:'',amdtText:'',selected:false};
@@ -2133,6 +2157,7 @@ function resetAll(){
   if(!confirm('Limpar o ecrã e voltar ao início? (a sessão guardada mantém-se na lista do passo 1 e pode ser retomada)'))return;
   changes=[];analyses={};meta={};curId=null;eaipCache={};
   initialSelection=null;removedItems={};dupFlags={};dupReasons={};impactScope=[];dupDetecting=false;
+  dupProposals=null;dupComputing=false;pendingDupApply=false;
   amdtPdfBuf=null;if(amdtPdfDoc){try{amdtPdfDoc.destroy();}catch(e){}amdtPdfDoc=null;}
   hiPages={};hiOrder=[];
   cacheKey=null;cacheHit=false;
