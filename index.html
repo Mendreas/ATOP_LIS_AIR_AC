@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.0</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.1</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -441,9 +441,11 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
 </div>
 
 <div class="modal-bg" id="dpcBg" onclick="if(event.target===this)closeDupCompare()">
+  <div id="loupe" style="display:none;position:fixed;z-index:400;pointer-events:none;border:2px solid var(--nav);border-radius:10px;box-shadow:0 10px 36px rgba(0,0,0,0.4);overflow:hidden;background:#fff"><canvas id="loupeCv"></canvas></div>
   <div class="modal" style="max-width:1200px">
     <div class="modal-hdr">
       <h3>⚖ Comparar páginas da emenda</h3>
+      <button id="loupeBtn" onclick="toggleLoupe()" class="btn btn-secondary btn-sm" style="flex-shrink:0;margin-right:8px" title="Com a lupa ligada, passe o rato sobre uma página para ampliar essa zona com nitidez total">🔍 Lupa: ligada</button>
       <button class="modal-close" onclick="closeDupCompare()">✕</button>
     </div>
     <div class="modal-body" style="max-height:78vh">
@@ -472,7 +474,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.0
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.1
   </div>
 </div>
 
@@ -732,6 +734,7 @@ function doFile(f){
       const _buf=await f.arrayBuffer();
       amdtPdfBuf=_buf.slice(0); // cópia para a comparação visual (o PDF.js consome o original)
       if(amdtPdfDoc){try{amdtPdfDoc.destroy();}catch(e){}amdtPdfDoc=null;}
+      hiPages={};hiOrder=[];
       const pages=await pdfToPages({data:_buf},9999,(i,n)=>{lg('  página '+i+' de '+n+'...');prog(15+Math.round(15*i/n));});
       const full=pages.join('\n');
       // Sumário = páginas até à lista "Insert / remove the pages" (secções 1, 2 e 3 do amendment)
@@ -1508,7 +1511,7 @@ function openDupReview(){
 }
 function renderDupGroups(){
   const b=document.getElementById('dupBody');
-  let h='<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Para cada item escolha <strong style="color:#166534">✓ Fica</strong> ou <strong style="color:#b91c1c">✕ Remover</strong>. Por omissão a sugestão da aplicação fica e as restantes saem — mas a decisão é sua: se concluir que não são duplicados, marque todas como Fica. Para comparar, marque <strong>⚖</strong> em dois itens e clique <strong>⚖ Comparar páginas</strong> (em baixo) para ver as páginas reais do PDF lado a lado. Os removidos vão para a secção <strong>🗑 Removidos</strong> e podem ser repostos.</p>';
+  let h='<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Para cada item escolha <strong style="color:#166534">✓ Fica</strong> ou <strong style="color:#b91c1c">✕ Remover</strong>. Por omissão a sugestão da aplicação fica e as restantes saem — mas a decisão é sua: se concluir que não são duplicados, marque todas como Fica. Para comparar, marque <strong>⚖</strong> em dois itens e clique <strong>⚖ Comparar páginas</strong> (em baixo) para ver as páginas reais do PDF lado a lado — e passe o rato sobre uma página para a <strong>🔍 lupa</strong> ampliar essa zona com nitidez total. Os removidos vão para a secção <strong>🗑 Removidos</strong> e podem ser repostos.</p>';
   dupGroups.forEach(function(g,gi){
     h+='<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden">';
     if(g.reason)h+='<div style="background:#fdf8f5;border-bottom:1px solid var(--border);padding:8px 12px;font-size:12px;color:var(--nav)"><strong>🛈 Porquê duplicados:</strong> '+esc(g.reason)+'</div>';
@@ -1618,16 +1621,75 @@ async function renderAmdtPages(el,c){
     const pg=await doc.getPage(p.i);
     const vp0=pg.getViewport({scale:1});
     const w=el.clientWidth||520;
-    const ratio=window.devicePixelRatio||1;
+    const ratio=Math.max(window.devicePixelRatio||1,2);
     const vp=pg.getViewport({scale:Math.max(0.5,(w-6)/vp0.width)*ratio});
     const cv=document.createElement('canvas');
     cv.width=vp.width;cv.height=vp.height;
-    cv.style.cssText='width:100%;border:1px solid var(--border);border-radius:6px;background:#fff;box-shadow:0 1px 4px rgba(93,46,70,0.08)';
+    cv.style.cssText='width:100%;border:1px solid var(--border);border-radius:6px;background:#fff;box-shadow:0 1px 4px rgba(93,46,70,0.08);cursor:zoom-in';
+    cv.dataset.pno=p.i;
+    cv.addEventListener('mousemove',function(e){loupeMove(e,cv);});
+    cv.addEventListener('mouseleave',loupeHide);
     el.appendChild(cv);
     await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
   }
 }
-function closeDupCompare(){document.getElementById('dpcBg').classList.remove('open');}
+function closeDupCompare(){loupeHide();document.getElementById('dpcBg').classList.remove('open');}
+
+// ── 🔍 Lupa: redesenha a zona sob o rato em alta resolução (o PDF é vectorial) ──
+let loupeOn=true,hiPages={},hiOrder=[];
+function toggleLoupe(){
+  loupeOn=!loupeOn;
+  const b=document.getElementById('loupeBtn');
+  if(b)b.textContent='🔍 Lupa: '+(loupeOn?'ligada':'desligada');
+  if(!loupeOn)loupeHide();
+}
+function loupeHide(){const l=document.getElementById('loupe');if(l)l.style.display='none';}
+async function ensureHiPage(pno,cssW){
+  if(hiPages[pno])return;
+  hiPages[pno]='p'; // em preparação
+  try{
+    const doc=await getAmdtDoc();if(!doc){delete hiPages[pno];return;}
+    const pg=await doc.getPage(pno);
+    const vp0=pg.getViewport({scale:1});
+    const target=Math.min(2600,Math.max(1800,cssW*5)); // largura-alvo em píxeis da versão nítida
+    const vp=pg.getViewport({scale:target/vp0.width});
+    const cv=document.createElement('canvas');
+    cv.width=vp.width;cv.height=vp.height;
+    await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+    hiPages[pno]=cv;hiOrder.push(pno);
+    while(hiOrder.length>2){ // manter no máximo 2 páginas nítidas em memória
+      const old=hiOrder.shift();
+      if(old!==pno&&hiPages[old]&&hiPages[old]!=='p'){hiPages[old].width=0;delete hiPages[old];}
+    }
+  }catch(e){delete hiPages[pno];}
+}
+function loupeMove(e,cv){
+  if(!loupeOn)return;
+  const l=document.getElementById('loupe'),lc=document.getElementById('loupeCv');
+  if(!l||!lc)return;
+  const rect=cv.getBoundingClientRect();
+  const fx=(e.clientX-rect.left)/rect.width,fy=(e.clientY-rect.top)/rect.height;
+  const LW=360,LH=250,M=5; // janela da lupa e ampliação (5x do tamanho no ecrã)
+  const dpr=window.devicePixelRatio||1;
+  if(lc.width!==Math.round(LW*dpr)){lc.width=Math.round(LW*dpr);lc.height=Math.round(LH*dpr);lc.style.width=LW+'px';lc.style.height=LH+'px';}
+  let px=e.clientX+22,py=e.clientY+22;
+  if(px+LW>window.innerWidth-10)px=e.clientX-LW-22;
+  if(py+LH>window.innerHeight-10)py=e.clientY-LH-22;
+  l.style.left=px+'px';l.style.top=py+'px';l.style.display='block';
+  const pno=parseInt(cv.dataset.pno,10);
+  const hp=hiPages[pno];
+  const srcCv=(hp&&hp!=='p')?hp:cv; // usa a versão nítida quando pronta; até lá, a visível
+  const ctx=lc.getContext('2d');
+  const sw=(LW/M)*(srcCv.width/rect.width),sh=(LH/M)*(srcCv.height/rect.height);
+  let sx=fx*srcCv.width-sw/2,sy=fy*srcCv.height-sh/2;
+  sx=Math.max(0,Math.min(srcCv.width-sw,sx));sy=Math.max(0,Math.min(srcCv.height-sh,sy));
+  ctx.imageSmoothingEnabled=true;
+  ctx.clearRect(0,0,lc.width,lc.height);
+  ctx.drawImage(srcCv,sx,sy,sw,sh,0,0,lc.width,lc.height);
+  if(!hp)ensureHiPage(pno,rect.width).then(function(){
+    if(l.style.display==='block'&&hiPages[pno]&&hiPages[pno]!=='p')loupeMove(e,cv);
+  });
+}
 
 function restoreInitialSel(){
   if(initialSelection===null){alert('Ainda não foi feita nenhuma análise de impacto.');return;}
@@ -1944,7 +2006,7 @@ function openHelp(){
   h+='<p style="font-size:12px;margin-bottom:6px">Cada item pode ter uma etiqueta de <strong>Acção</strong> sobre os registos dos sistemas: <strong>INSERIR</strong> (registo novo), <strong>MODIFICAR</strong> (registo alterado ou retirada parcial, ex. VOR retirado mas DME mantido), <strong>ELIMINAR</strong> (registo removido) ou <strong>SEM REGISTO</strong> (alteração editorial/carta). É atribuída pela IA na fase de refinamento, a partir do texto real da emenda.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Na mesma fase, as <strong>categorias</strong> são verificadas contra o texto da emenda e os sistemas/órgãos são <strong>revalidados</strong> — excepto nos itens que já editou manualmente, que são sempre respeitados. Passe o rato sobre um sistema para ver <strong>porque foi atribuído</strong> (categoria ou termo encontrado).</p>';
   h+='<h4 style="font-size:13px;color:var(--nav);margin:18px 0 8px">🔁 Duplicados e reposição</h4>';
-  h+='<p style="font-size:12px;margin-bottom:6px">Os duplicados são identificados pela <strong>IA</strong>, que compara o significado das alterações (não apenas palavras em comum) e explica em cada grupo <strong>porquê</strong> os considera a mesma alteração publicada em mais do que uma secção. O botão <strong>👁 Rever duplicados</strong> abre os duplicados prováveis agrupados: a decisão é <strong>item a item</strong>: cada entrada tem ✓ Fica / ✕ Remover (por omissão fica a sugestão e saem as restantes, mas pode manter todas). Para decidir, pode ver o texto (📄) ou marcar dois itens com <strong>⚖</strong> e comparar as <strong>páginas reais do PDF lado a lado</strong>. Nada é removido sem revisão.</p>';
+  h+='<p style="font-size:12px;margin-bottom:6px">Os duplicados são identificados pela <strong>IA</strong>, que compara o significado das alterações (não apenas palavras em comum) e explica em cada grupo <strong>porquê</strong> os considera a mesma alteração publicada em mais do que uma secção. O botão <strong>👁 Rever duplicados</strong> abre os duplicados prováveis agrupados: a decisão é <strong>item a item</strong>: cada entrada tem ✓ Fica / ✕ Remover (por omissão fica a sugestão e saem as restantes, mas pode manter todas). Para decidir, pode ver o texto (📄) ou marcar dois itens com <strong>⚖</strong> e comparar as <strong>páginas reais do PDF lado a lado</strong>, com uma <strong>🔍 lupa</strong> que amplia com nitidez a zona sob o rato. Nada é removido sem revisão.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">No passo 3, alterações que repetem o mesmo tema (ex.: um navaid retirado e as cartas que apenas mostram essa remoção) são agrupadas: a entrada principal é mantida e as cartas duplicadas vão para a secção <strong>Removidos</strong>, no fundo da página.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Todas as remoções são reversíveis com o botão <strong>↩ Repor</strong>. O botão <strong>↺ Repor análise inicial</strong> restaura a selecção original da primeira análise.</p>';
   h+='<p style="font-size:12px;margin-bottom:6px">Os itens removidos não desaparecem do registo: a nota técnica inclui uma secção final <strong>"Itens revistos sem acção nos sistemas"</strong> que documenta cada exclusão e o seu motivo.</p>';
@@ -2072,6 +2134,7 @@ function resetAll(){
   changes=[];analyses={};meta={};curId=null;eaipCache={};
   initialSelection=null;removedItems={};dupFlags={};dupReasons={};impactScope=[];dupDetecting=false;
   amdtPdfBuf=null;if(amdtPdfDoc){try{amdtPdfDoc.destroy();}catch(e){}amdtPdfDoc=null;}
+  hiPages={};hiOrder=[];
   cacheKey=null;cacheHit=false;
   document.getElementById('fi').value='';
   document.getElementById('progWrap').style.display='none';
