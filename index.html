@@ -1669,7 +1669,7 @@ function loupeMove(e,cv){
   if(!l||!lc)return;
   const rect=cv.getBoundingClientRect();
   const fx=(e.clientX-rect.left)/rect.width,fy=(e.clientY-rect.top)/rect.height;
-  const LW=360,LH=250,M=5; // janela da lupa e ampliação (5x do tamanho no ecrã)
+  const LW=380,LH=260,M=3.5; // janela da lupa e ampliação (3.5x do tamanho no ecrã)
   const dpr=window.devicePixelRatio||1;
   if(lc.width!==Math.round(LW*dpr)){lc.width=Math.round(LW*dpr);lc.height=Math.round(LH*dpr);lc.style.width=LW+'px';lc.style.height=LH+'px';}
   let px=e.clientX+22,py=e.clientY+22;
