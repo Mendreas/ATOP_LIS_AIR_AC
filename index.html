@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.3</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.4</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -474,7 +474,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.3
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.4
   </div>
 </div>
 
@@ -652,7 +652,9 @@ function indexPages(pages,summaryEnd){
   for(let i=summaryEnd+1;i<pages.length;i++){
     const p=pages[i];if(p.trim().length<400)continue; // cartas / páginas em branco
     const k=pageKey(p);if(!k||/^GEN 0\./.test(k))continue; // GEN 0.x = registo/checklist, sem interesse
-    amdtPages.push({i:i+1,key:k,hdr:PAGE_HDR.exec(p)[0].replace(/\s+/g,' ').trim(),text:p});
+    const hdr=PAGE_HDR.exec(p)[0].replace(/\s+/g,' ').trim();
+    const sm=/-\s*(\d+)\s*$/.exec(hdr); // número da própria página (ex.: "LPFR AD 2.24.08 - 7" → 7)
+    amdtPages.push({i:i+1,key:k,sub:sm?parseInt(sm[1],10):null,hdr:hdr,text:p});
   }
 }
 // Referências (AD, secção) no sumário da emenda — secções 1 e 2
@@ -680,14 +682,26 @@ function pagesForRef(ad,sec){
   }
   if(!/^LP[A-Z]{2}$/.test(ad))return [];
   if(/^2\.24\./.test(sec)){
-    const chart=sec.split('-')[0].split('.').slice(0,3).join('.');
-    return amdtPages.filter(p=>p.key===ad+' AD '+chart);
+    const parts=sec.split('-');
+    const chart=parts[0].split('.').slice(0,3).join('.');
+    const all=amdtPages.filter(p=>p.key===ad+' AD '+chart);
+    const sub=parts.length>1?parseInt(parts[1],10):NaN;
+    if(!isNaN(sub)){const ex=all.filter(p=>p.sub===sub);if(ex.length)return ex;}
+    return all;
   }
   const main=amdtPages.filter(p=>p.key===ad+' AD 2');
   if(!sec)return main;
   const rxSec=new RegExp('AD\\s+'+sec.replace(/\./g,'\\.')+'\\b');
   const hit=main.filter(p=>rxSec.test(p.text));
   return hit.length?hit:[];
+}
+// A página própria da carta (ex.: 2.24.08-5) consta das páginas de substituição?
+function chartPageMiss(ad,sec){
+  const m=/^2\.24\..*-(\d+)\s*$/.exec((sec||'').trim());
+  if(!m)return null;
+  const ps=pagesForRef(ad,sec);
+  if(!ps.length)return null;
+  return ps.some(p=>p.sub===parseInt(m[1],10))?null:m[1];
 }
 // Painel expansível com o texto da emenda para uma alteração — usado nos passos 2 e 3
 function amdtPanelHtml(id){
@@ -1631,9 +1645,15 @@ async function getAmdtDoc(){
 function openDupCompare(){
   if(dupCmpSel.length!==2)return;
   document.getElementById('dpcBg').classList.add('open');
+  // Aviso quando as duas secções resolvem para as MESMAS páginas da emenda
+  const _c0=changes.find(x=>x.id===dupCmpSel[0]),_c1=changes.find(x=>x.id===dupCmpSel[1]);
+  const _k0=_c0?pagesForRef(_c0.ad,_c0.section).map(p=>p.i).join(','):'';
+  const _k1=_c1?pagesForRef(_c1.ad,_c1.section).map(p=>p.i).join(','):'';
+  const samePages=_k0&&_k0===_k1;
   ['A','B'].forEach(function(S,ix){
     const id=dupCmpSel[ix];const c=changes.find(x=>x.id===id);if(!c)return;
-    document.getElementById('dpcHdr'+S).innerHTML='<strong style="color:var(--nav);font-size:13px">'+esc(c.ad+' '+(c.section||''))+'</strong><div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">'+esc(c.description)+'</div>';
+    document.getElementById('dpcHdr'+S).innerHTML='<strong style="color:var(--nav);font-size:13px">'+esc(c.ad+' '+(c.section||''))+'</strong><div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">'+esc(c.description)+'</div>'+
+      (samePages?'<div style="font-size:11px;color:#92400e;background:#fff8e1;border:1px solid #fbbf24;border-radius:6px;padding:5px 8px;margin-top:6px">⚠ As duas secções partilham as mesmas páginas de substituição nesta emenda — os dois lados mostram o mesmo conteúdo.</div>':'');
     const el=document.getElementById('dpc'+S);
     el.innerHTML='<div style="font-size:12px;color:var(--muted);padding:20px 0"><span class="spin"></span> A desenhar páginas…</div>';
     renderAmdtPages(el,c);
@@ -1641,6 +1661,7 @@ function openDupCompare(){
 }
 async function renderAmdtPages(el,c){
   const ps=pagesForRef(c.ad,c.section).slice(0,4);
+  const miss=chartPageMiss(c.ad,c.section);
   let doc=null;try{doc=await getAmdtDoc();}catch(e){}
   if(!doc||!ps.length){
     const txt=(analyses[c.id]&&analyses[c.id].amdtText)||'';
@@ -1650,10 +1671,16 @@ async function renderAmdtPages(el,c){
     return;
   }
   el.innerHTML='';
+  if(miss){
+    const warn=document.createElement('div');
+    warn.style.cssText='font-size:11px;color:#92400e;background:#fff8e1;border:1px solid #fbbf24;border-radius:7px;padding:8px 10px;margin-bottom:8px';
+    warn.textContent='Nota: a página própria da carta '+c.section+' não foi substituída nesta emenda — mostram-se as páginas que a emenda traz para a secção '+c.section.split('-')[0]+' (normalmente as tabelas de codificação onde a alteração está).';
+    el.appendChild(warn);
+  }
   for(const p of ps){
     const lbl=document.createElement('div');
     lbl.style.cssText='font-size:10px;color:var(--muted);margin:6px 0 3px';
-    lbl.textContent='página '+p.i+' do PDF — '+p.key;
+    lbl.textContent='página '+p.i+' do PDF — '+(p.hdr||p.key);
     el.appendChild(lbl);
     const pg=await doc.getPage(p.i);
     const vp0=pg.getViewport({scale:1});
