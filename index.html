@@ -254,7 +254,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <div class="logo">✈</div>
   <div class="header-text">
     <h1>AIRAC Impact Tool &mdash; NAV Portugal / GOPLIS</h1>
-    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.4</p>
+    <p>Análise de impacto ATC &middot; Notificação ao ATOPLIS &middot; v3.6</p>
   </div>
   <div class="header-right">
     <button id="btnCompare" onclick="openCompare()" style="display:none;padding:5px 14px;border-radius:7px;border:1px solid rgba(212,165,165,0.4);background:rgba(212,165,165,0.15);color:#e8d5c4;cursor:pointer;font-size:11px;font-weight:600" title="eAIP em vigor à esquerda, emenda à direita, com as diferenças realçadas">⇄ Comparação de alterações</button>
@@ -381,6 +381,16 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
     <div id="emailList"></div>
   </div>
   <div class="exp-section">
+    <h3>🖥 Resumo por sistema</h3>
+    <p>A lista de trabalho por sistema: para cada sistema, as alterações que o afetam, com a acção, os ficheiros e a análise. Para uso directo do ATOPLIS.</p>
+    <textarea class="pdftxt" id="sysContent" style="min-height:220px"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="copySysSummary()">📋 Copiar</button>
+      <button class="btn btn-secondary" onclick="downloadSysSummary()">⬇ Descarregar (.txt)</button>
+      <button class="btn btn-success" onclick="printSysSummary()">🖨 Gerar PDF / Imprimir</button>
+    </div>
+  </div>
+  <div class="exp-section">
     <h3>📋 Nota técnica para ATOPLIS</h3>
     <p>Edite o conteúdo abaixo antes de gerar o PDF.</p>
     <textarea class="pdftxt" id="pdfContent"></textarea>
@@ -474,7 +484,7 @@ textarea.pdftxt:focus{border-color:var(--nav2);box-shadow:0 0 0 3px rgba(93,46,7
   <span id="statusTxt">Pronto — Configure a URL do Worker no topo.</span>
   <div class="status-brand">
     <div class="status-dot"></div>
-    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.4
+    GOPLIS/DOPLIS &middot; NAV Portugal &middot; AIRAC Impact Tool v3.6
   </div>
 </div>
 
@@ -496,6 +506,10 @@ const SYSTEMS_DEF=[
   {id:'TOPSKY',name:'TOPSKY-ATC',vendor:'Thales',
    organs:['TWRLIS','CCLIS','TWRPOR','TWRCAS','TWRFAR','TWRFUN','TWRSAN'],shared:true,
    cats:['SID','STAR','IAP','HLDG','WPT','NAV','RWY','FREQ','AWY','MSA','HLP'],
+   // Validado ATOPLIS 11/2026: notificar SÓ os órgãos impactados — o órgão do AD da
+   // alteração, mais o CC Lisboa nas categorias de procedimentos/navegação (ccCats).
+   // Ex.: SID de LPFR → TWR Faro + CC Lisboa; FREQ GND do LPPT → só TWR Lisboa.
+   orgByAd:true,ccCats:['SID','STAR','IAP','HLDG','WPT','NAV','AWY','MSA','HLP'],
    secs:['AD','ENR','GEN'],adScoped:false,
    files:{SID:['ROUTES','SID_ALLOCATION','CHARACTERISTIC_POINTS'],
      STAR:['ROUTES','STAR_ALLOCATION','CHARACTERISTIC_POINTS'],
@@ -518,12 +532,15 @@ const SYSTEMS_DEF=[
    cats:['SID','STAR','WPT','NAV','AWY'],secs:['AD','ENR'],adScoped:true},
   {id:'EFS',name:'EFS',vendor:'NAV Portugal',
    organs:['TWRLIS'],shared:false,
-   cats:['SID'],kw:['layout','taxiway','twy','stand','apron'],
+   // Validado ATOPLIS 11/2026: frequências NÃO afetam o EFS; nomes de TWY e RWY sim.
+   cats:['SID','RWY'],kw:['layout','taxiway','twy','stand','apron'],
    secs:['AD'],adScoped:true,onlyADs:['LPPT']},
   {id:'RUNWAY_MGR',name:'Runway Manager',vendor:'NAV Portugal',
    organs:['TWRLIS','CCLIS'],shared:false,
+   // Validado ATOPLIS 11/2026: só existe no LPPT (CC Lisboa em supervisão).
+   // Por confirmar se existe no Porto — crê-se que não.
    cats:['RWY'],kw:['designador','numeração de stand','stand number','threshold'],
-   secs:['AD'],adScoped:true},
+   secs:['AD'],adScoped:true,onlyADs:['LPPT']},
   {id:'ASMGCS',name:'ASMGCS',vendor:'External',
    organs:['TWRLIS','TWRPOR','TWRFAR'],shared:false,
    cats:['RWY'],kw:['taxiway','twy','apron','aerodrome layout','layout aeródromo'],
@@ -959,7 +976,18 @@ function guessSystems(c,extraText){
     if(sys.secs&&!sys.secs.includes(st))return;
     if(sys.onlyADs&&!sys.onlyADs.includes(ad))return;
     let organs=[...sys.organs];
-    if(sys.adScoped&&st!=='ENR'){
+    if(sys.orgByAd){
+      // Órgãos = só os impactados: o órgão do AD da alteração (ENR→CCLIS, GEN→AD_ORG.GEN),
+      // mais CC Lisboa nas categorias de procedimentos/navegação (ccCats).
+      if(st==='ENR')organs=['CCLIS'];
+      else if(st==='GEN')organs=(AD_ORG['GEN']||['CCLIS']).slice();
+      else{
+        const own=ORGANS.find(o=>o.code===ad);
+        organs=own?[own.id]:(AD_ORG[ad]||[]).slice();
+      }
+      if(sys.ccCats&&catHits.some(tc=>sys.ccCats.includes(tc))&&organs.indexOf('CCLIS')<0)organs.push('CCLIS');
+      if(!organs.length)return;
+    }else if(sys.adScoped&&st!=='ENR'){
       const adO=AD_ORG[ad]||[];
       organs=organs.filter(o=>adO.includes(o));
       if(!organs.length)return;
@@ -1305,7 +1333,9 @@ function goImpact(){
 // todas as pessoas aplicam o MESMO resultado — fim das discrepâncias entre análises.
 async function runDupDetection(){
   if(Array.isArray(dupProposals)||dupProposals==='failed'){
-    applyDupProposalsToScope();updBtn();renderImpact();saveSession();return;
+    applyDupProposalsToScope();updBtn();renderImpact();saveSession();
+    if(Array.isArray(dupProposals))setStatus('Duplicados (resultado partilhado): '+dupProposals.length+' grupo(s) identificado(s) neste AIRAC.');
+    return;
   }
   dupDetecting=true;pendingDupApply=true;renderImpact();
   computeDupProposals();
@@ -1317,8 +1347,8 @@ async function computeDupProposals(){
   try{dupProposals=await aiDupProposals();}
   catch(e){dupProposals='failed';}
   dupComputing=false;
-  // Entradas antigas da cache (sem duplicados guardados): actualizar para toda a gente
-  if(cacheHit&&cacheKey&&Array.isArray(dupProposals)){
+  // Persistir o veredicto na cache partilhada (entradas antigas ou recalculadas)
+  if(cacheKey&&Array.isArray(dupProposals)){
     try{fetch(getUrl(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({_cachePut:cacheKey,data:{v:1,savedAt:new Date().toISOString(),meta:meta,changes:changes,dupProposals:dupProposals}})});}catch(e){}
   }
   if(pendingDupApply){
@@ -1329,6 +1359,17 @@ async function computeDupProposals(){
     const ng=Array.isArray(dupProposals)?dupProposals.length:0;
     setStatus(ng?'Verificação de duplicados concluída: '+ng+' grupo(s) identificado(s).':'Verificação de duplicados concluída: a IA não identificou duplicados neste AIRAC.');
   }
+}
+function recomputeDups(){
+  dupProposals=null;dupFlags={};dupReasons={};
+  Object.keys(removedItems).forEach(function(id){
+    if(removedItems[id].reason==='auto'){
+      delete removedItems[id];
+      analyses[id].selected=true;
+      const rc=document.querySelector('.rc[data-id="'+id+'"]');if(rc)rc.checked=true;
+    }
+  });
+  runDupDetection();
 }
 function applyDupProposalsToScope(){
   if(dupProposals==='failed'){try{detectDuplicatesHeuristic();}catch(e){}return;}
@@ -1454,6 +1495,7 @@ function renderImpact(){
   if(dupDetecting)h+='<span style="background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;margin-left:12px;white-space:nowrap"><span class="spin"></span> A identificar duplicados (uma única vez por AIRAC)...</span>';
   if(dupN>0)h+='<button class="btn btn-sm" onclick="openDupReview()" style="background:#fff8e1;border:1px solid #fbbf24;color:#92400e;margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Abre os duplicados prováveis agrupados: decide item a item o que fica e o que sai, com comparação das páginas do PDF lado a lado">👁 Rever '+dupN+' duplicado(s)</button>';
   if(!dupDetecting&&Array.isArray(dupProposals)&&dupN===0&&autoN===0)h+='<span style="background:#f7f7f5;border:1px solid var(--border);border-radius:5px;font-size:11px;color:var(--muted);padding:2px 10px;margin-left:12px;white-space:nowrap">✓ Verificação feita: sem duplicados neste conjunto</span>';
+  if(!dupDetecting&&(Array.isArray(dupProposals)||dupProposals==='failed'))h+='<button class="btn btn-sm" onclick="recomputeDups()" title="Volta a pedir à IA a identificação de duplicados (nova chamada) e actualiza a cache partilhada — use se suspeitar que o resultado guardado está errado" style="background:#fff;border:1px solid var(--border2);color:var(--muted);margin-left:8px;font-size:11px;padding:2px 9px;flex-shrink:0">↻ Recalcular</button>';
   if(!dupDetecting&&dupProposals==='failed')h+='<span style="background:#fff8e1;border:1px solid #fbbf24;border-radius:5px;font-size:11px;color:#92400e;padding:2px 10px;margin-left:12px;white-space:nowrap">⚠ IA indisponível — duplicados verificados por palavras-chave</span>';
   h+='<button class="btn btn-sm" onclick="restoreInitial()" style="background:#fff;border:1px solid var(--border2);color:var(--nav);margin-left:12px;font-size:11px;padding:4px 12px;flex-shrink:0" title="Repõe a selecção original da primeira análise e todas as remoções">↺ Repor análise inicial</button>';
   strip.innerHTML=h;
@@ -1775,7 +1817,69 @@ function restoreInitial(){
 }
 
 // ── PANEL 4 ──
-function goExport(){buildEmails();buildPDF();goStep(4);}
+function goExport(){buildEmails();buildPDF();buildSystemSummary();goStep(4);}
+
+// Resumo por sistema: agrupa as alterações seleccionadas por sistema impactado,
+// com acção, ficheiros, órgãos e análise — a lista de trabalho do ATOPLIS.
+function buildSystemSummary(){
+  const sel=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected);
+  const L=[];
+  L.push('RESUMO DE ACÇÕES EM SISTEMAS — AIRAC '+meta.number);
+  L.push('Data efectiva: '+meta.effectiveDate+'  |  Gerado: '+new Date().toLocaleDateString('pt-PT'));
+  L.push('');
+  L.push('Para cada sistema: as alterações que o afectam, a acção sobre o(s) registo(s),');
+  L.push('os ficheiros a actualizar e a análise de impacto.');
+  L.push('');
+  let anySys=false;
+  SYSTEMS_DEF.forEach(function(sys){
+    const items=sel.filter(function(c){const a=analyses[c.id];return a.systems.indexOf(sys.name)>-1;});
+    if(!items.length)return;
+    anySys=true;
+    const allFiles=new Set(),allOrgs=new Set();
+    items.forEach(function(c){
+      const sd=(analyses[c.id].systemsDetail||[]).find(s=>s.sysId===sys.id);
+      if(sd){(sd.files||[]).forEach(f=>allFiles.add(f));(sd.organs||[]).forEach(o=>allOrgs.add(o));}
+    });
+    L.push('='.repeat(65));
+    L.push(sys.name+' ('+(sys.vendor||'')+') — '+items.length+' alteração(ões)');
+    if(allOrgs.size)L.push('Órgãos impactados: '+[...allOrgs].map(function(oid){const o=ORGANS.find(x=>x.id===oid);return o?o.name:oid;}).join(', '));
+    if(allFiles.size)L.push('Ficheiros a actualizar: '+[...allFiles].join(', '));
+    L.push('='.repeat(65));
+    L.push('');
+    items.forEach(function(c,i){
+      const a=analyses[c.id];
+      const sd=(a.systemsDetail||[]).find(s=>s.sysId===sys.id);
+      L.push((i+1)+'. '+(c.action?'['+actPT(c.action)+'] ':'')+c.ad+(c.section?' '+c.section:'')+' — '+c.description);
+      if(sd&&sd.files&&sd.files.length)L.push('   Ficheiros: '+sd.files.join(', '));
+      if(a.desc&&a.desc.length>5)L.push('   Análise: '+a.desc.replace(/\n/g,'\n   '));
+      L.push('');
+    });
+  });
+  if(!anySys)L.push('(Nenhuma alteração seleccionada afecta sistemas.)');
+  L.push('='.repeat(65));
+  L.push('Gerado por AIRAC Impact Tool — GOPLIS/DOPLIS — NAV Portugal');
+  const el=document.getElementById('sysContent');if(el)el.value=L.join('\n');
+}
+function copySysSummary(){
+  const el=document.getElementById('sysContent');
+  if(el&&navigator.clipboard)navigator.clipboard.writeText(el.value).then(function(){setStatus('Resumo por sistema copiado.');});
+}
+function downloadSysSummary(){
+  const el=document.getElementById('sysContent');if(!el)return;
+  const name='AIRAC_'+String(meta.number||'').replace(/[^A-Za-z0-9-]/g,'_')+'_Resumo_Sistemas_'+new Date().toISOString().slice(0,10)+'.txt';
+  const blob=new Blob([el.value],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},500);
+  setStatus('Resumo descarregado: '+name);
+}
+function printSysSummary(){
+  const c=(document.getElementById('sysContent')||{}).value||'';
+  const t='AIRAC_'+meta.number+'_Resumo_Sistemas_'+new Date().toISOString().slice(0,10);
+  const w=window.open('','_blank');
+  const safe=c.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+t+'</title><style>body{font-family:Courier New,monospace;font-size:10.5px;line-height:1.65;padding:18mm;color:#000;background:#fff}pre{white-space:pre-wrap;word-wrap:break-word}@media print{@page{margin:18mm}body{padding:0}}</style></head><body><pre>'+safe+'</pre><script>window.onload=function(){window.print();}<\/script></body></html>');
+  w.document.close();setStatus('Resumo aberto para impressão.');
+}
 
 function buildEmails(){
   const sel=changes.filter(c=>analyses[c.id]&&analyses[c.id].selected);

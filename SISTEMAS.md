@@ -1,10 +1,10 @@
 # Matriz de Sistemas — AIRAC Impact Tool
 
-**Documento de referência e validação da matriz de decisão da aplicação** (constante `SYSTEMS_DEF` do `index.html`, v3.5).
+**Documento de referência e validação da matriz de decisão da aplicação** (constante `SYSTEMS_DEF` do `index.html`, v3.6).
 
 É esta matriz que decide, para cada alteração do AIRAC, **que sistemas são impactados, que ficheiros de dataset são tocados e que órgãos são notificados**. Toda a análise de impacto da aplicação assenta aqui.
 
-> ⚠️ **Origem e estado:** esta matriz foi construída a partir de conhecimento operacional transmitido durante o desenvolvimento da aplicação — **não deriva de documentação oficial dos sistemas** (manuais de adaptação, ICDs, procedimentos ATOPLIS). Precisa de ser **validada pelo ATOPLIS** antes de ser considerada fiável. As questões em aberto estão assinaladas com ❓ e resumidas no fim, na [checklist de validação](#checklist-de-validação-para-o-atoplis).
+> ⚠️ **Origem e estado:** esta matriz foi construída a partir de conhecimento operacional transmitido durante o desenvolvimento da aplicação — **não deriva de documentação oficial dos sistemas**. Em **novembro de 2026** foi feita uma **primeira ronda de validação** (notificação TOPSKY por órgão impactado, EFS, Runway Manager, ASMGCS, órgãos do GEN — assinaladas com ✅). As questões ainda em aberto estão assinaladas com ❓ e resumidas na [checklist de validação](#checklist-de-validação-para-o-atoplis).
 
 ---
 
@@ -32,9 +32,9 @@ Sistema ATC principal. **Dataset partilhado**: uma alteração em qualquer parte
 
 | Propriedade | Valor |
 |---|---|
-| Órgãos associados | **Todos os 7** (TWR Lisboa, CC Lisboa, TWR Porto, TWR Cascais, TWR Faro, TWR Funchal, TWR Porto Santo) |
+| Órgãos **notificados** | **Só os impactados** ✅ (validado 11/2026): o órgão do aeródromo da alteração, **mais o CC Lisboa** nas categorias de procedimentos/navegação (SID, STAR, IAP, HLDG, WPT, NAV, AWY, MSA, HLP). Ex.: SID de LPFR → TWR Faro + CC Lisboa; FREQ GND do LPPT → só TWR Lisboa. Alterações ENR → CC Lisboa; GEN → CC Lisboa + TWR Lisboa. |
 | Partes do AIP | AD, ENR e GEN |
-| Âmbito | Global (não limitado ao aeródromo da alteração) |
+| Âmbito do dataset | Partilhado — a actualização é central e serve todos os órgãos |
 | Categorias que o afetam | SID, STAR, IAP, HLDG, WPT, NAV, RWY, FREQ, AWY, MSA, HLP |
 
 **Ficheiros de dataset por categoria:**
@@ -55,7 +55,9 @@ Sistema ATC principal. **Dataset partilhado**: uma alteração em qualquer parte
 
 ❓ **A validar:** o mapeamento **FREQ → AIRPORT_RUNWAY** parece suspeito — uma alteração de frequência de comunicação ou de navegação atualiza-se mesmo no ficheiro AIRPORT_RUNWAY? Ou há outro ficheiro (ou nenhum)?
 
-❓ **A validar:** sendo o dataset partilhado, a **notificação** deve mesmo ir aos 7 órgãos para qualquer alteração (ex.: um SID de Faro notifica TWR Porto Santo)? Ou deve ir apenas ao órgão do aeródromo + CC Lisboa, ficando a atualização do dataset como ação central única? (Decisão pendente desde a revisão de outubro 2026.)
+✅ **Validado (11/2026):** a notificação vai **só aos órgãos impactados** — implementado como descrito na ficha acima.
+
+❓ **A validar (nota da implementação):** nas categorias **FREQ e RWY**, o CC Lisboa não é incluído (seguindo o exemplo "FREQ GND → só TWR"). Confirmar que também nas alterações de **pista (RWY)** o CC Lisboa não precisa de notificação.
 
 ---
 
@@ -94,13 +96,13 @@ Sistema ATC principal. **Dataset partilhado**: uma alteração em qualquer parte
 | Órgãos associados | TWR Lisboa |
 | Partes do AIP | Só AD |
 | Âmbito | **Só LPPT** |
-| Categorias que o afetam | SID |
+| Categorias que o afetam | SID, RWY ✅ (validado 11/2026: frequências **não** afetam o EFS; nomes de TWY e RWY **sim**) |
 | Palavras-chave adicionais | layout, taxiway, twy, stand, apron |
 | Ficheiros | (não definidos) ❓ |
 
 As palavras-chave são procuradas na descrição **e** no texto completo das páginas da emenda — uma alteração do LPPT classificada como GER mas cujas páginas falem de taxiways dispara o EFS na mesma.
 
-❓ **A validar:** só SIDs e layout? Alterações de frequências ou designadores de pista do LPPT não afetam o EFS?
+✅ **Validado (11/2026):** frequências não afetam o EFS; nomes de TWY e RWY sim — a categoria RWY foi acrescentada.
 
 ---
 
@@ -108,14 +110,14 @@ As palavras-chave são procuradas na descrição **e** no texto completo das pá
 
 | Propriedade | Valor |
 |---|---|
-| Órgãos associados | TWR Lisboa, CC Lisboa |
+| Órgãos associados | TWR Lisboa, CC Lisboa (supervisão) |
 | Partes do AIP | Só AD |
-| Âmbito | Por aeródromo |
+| Âmbito | **Só LPPT** ✅ (validado 11/2026) |
 | Categorias que o afetam | RWY |
 | Palavras-chave adicionais | designador, numeração de stand, stand number, threshold |
 | Ficheiros | (não definidos) ❓ |
 
-❓ **A validar:** o Runway Manager existe só no LPPT (como o EFS) ou noutros aeródromos? A matriz atual permite dispará-lo em qualquer AD, mas só notifica TWR Lisboa/CC Lisboa — é coerente?
+✅ **Validado (11/2026):** só existe no LPPT, com o CC Lisboa em supervisão — restrição implementada. ❓ Resta confirmar que não existe no Porto (crê-se que não).
 
 ---
 
@@ -132,7 +134,7 @@ Vigilância de movimentos no solo.
 | Palavras-chave adicionais | taxiway, twy, apron, aerodrome layout, layout aeródromo |
 | Ficheiros | (não definidos) ❓ |
 
-❓ **A validar:** a lista de aeródromos com ASMGCS está correta e atual?
+✅ **Validado (11/2026):** a lista de aeródromos (LPPT, LPPR, LPFR) está correta.
 
 ---
 
@@ -155,9 +157,9 @@ Vigilância de movimentos no solo.
 | LPPT | TWR Lisboa + CC Lisboa |
 | LPPR / LPCS / LPFR / LPMA / LPPS | TWR do próprio aeródromo |
 | ENR | CC Lisboa |
-| GEN | CC Lisboa + TWR Lisboa ❓ |
+| GEN | CC Lisboa + TWR Lisboa ✅ (validado 11/2026) |
 
-❓ **A validar:** as alterações GEN (ex.: novo heliporto nos location indicators) devem notificar CC Lisboa + TWR Lisboa, ou outra combinação?
+✅ **Validado (11/2026):** mantém-se CC Lisboa + TWR Lisboa.
 
 ---
 
@@ -188,15 +190,16 @@ As categorias **NAV-DB** implicam atualização de datasets; as **Operacionais**
 Sessão sugerida: percorrer esta lista com 2-3 AIRAC passados ao lado da análise manual.
 
 1. ☐ TOPSKY: mapeamento **FREQ → AIRPORT_RUNWAY** está correto?
-2. ☐ TOPSKY: notificar os **7 órgãos** sempre, ou órgão do AD + CC Lisboa?
-3. ☐ GEC: categorias completas (WPT? NAV? AWY?) e nome correto do destino ("BD Estática")?
-4. ☐ TWRATM: que parâmetros/ficheiros concretos se atualizam?
-5. ☐ EFS: só SID+layout no LPPT? FREQ/RWY não contam?
-6. ☐ Runway Manager: em que aeródromos existe?
-7. ☐ ASMGCS: lista de aeródromos (LPPT, LPPR, LPFR) atual?
-8. ☐ GEN → CC Lisboa + TWR Lisboa é a notificação certa?
-9. ☐ Categorias operacionais (PROC/SPACE/RESTRICT): confirmam que nunca tocam nos sistemas (incl. video maps)?
-10. ☐ Falta algum sistema na matriz? (ex.: sistemas MET, AMAN, simuladores…)
+2. ☑ ~~TOPSKY: notificação~~ — **validado 11/2026**: só órgãos impactados (AD + CC Lisboa nas categorias de procedimentos/navegação)
+3. ☐ TOPSKY: nas alterações de **pista (RWY)**, o CC Lisboa também fica de fora da notificação?
+4. ☐ GEC: categorias completas (WPT? NAV? AWY?) e nome correto do destino ("BD Estática")?
+5. ☐ TWRATM: que parâmetros/ficheiros concretos se atualizam?
+6. ☑ ~~EFS~~ — **validado 11/2026**: FREQ não conta; nomes de TWY/RWY sim (categoria RWY acrescentada)
+7. ☑ ~~Runway Manager~~ — **validado 11/2026**: só LPPT (❓ confirmar que não existe no Porto)
+8. ☑ ~~ASMGCS~~ — **validado 11/2026**: lista correta
+9. ☑ ~~GEN → órgãos~~ — **validado 11/2026**: mantém CC Lisboa + TWR Lisboa
+10. ☐ Categorias operacionais (PROC/SPACE/RESTRICT): confirmam que nunca tocam nos sistemas (incl. video maps)?
+11. ☐ Falta algum sistema na matriz? (ex.: sistemas MET, AMAN, simuladores…)
 
 ---
 
@@ -216,4 +219,4 @@ Depois de editar, publicar o `index.html` no GitHub como habitualmente. **Qualqu
 
 ---
 
-*Documento gerado a partir do `index.html` v3.5 (novembro 2026). Em caso de dúvida, o código é a referência — este documento descreve-o.*
+*Documento gerado a partir do `index.html` v3.6 (novembro 2026). Primeira ronda de validação ATOPLIS incorporada em 03-11-2026. Em caso de dúvida, o código é a referência — este documento descreve-o.*
